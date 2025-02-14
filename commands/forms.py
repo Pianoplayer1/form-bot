@@ -69,7 +69,7 @@ class FormEditModal(ui.Modal):
             channel,
             self.items[0].default,
         )
-        await respond_success(interaction, f"Form `{self.items[0].value}` updated.`")
+        await respond_success(interaction, f"Form `{self.items[0].value}` updated.")
 
 
 @app_commands.default_permissions(administrator=True)

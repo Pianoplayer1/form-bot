@@ -13,7 +13,7 @@ async def respond(
 ) -> None:
     embed = discord.Embed(color=color, title=title, description=content)
     if edit:
-        await interaction.response.edit_message(content=content, embed=embed, view=None)
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
     else:
         await interaction.response.send_message(embed=embed, ephemeral=True)
     logging.getLogger("client.responses").debug("%d: %s", content, interaction.user.id)

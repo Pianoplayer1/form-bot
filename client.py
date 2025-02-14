@@ -51,6 +51,7 @@ class Client(discord.Client):
         await self.tree.sync()
 
     async def on_ready(self) -> None:
+        await self.change_presence(status=discord.Status.offline)
         log_channel = self.get_channel(int(os.getenv("FORMS_LOG_CHANNEL", "0")))
         if isinstance(log_channel, discord.TextChannel):
             logging.getLogger().addHandler(DiscordLogHandler(self, log_channel))

@@ -216,4 +216,4 @@ class FormQuestionCommands(app_commands.Group):
                 f" label `{question}` already exists in the currently selected modal.",
             )
         else:
-            await respond_success(interaction, f"Question `{question}` removed.`")
+            await respond_success(interaction, f"Question `{question}` removed.")
