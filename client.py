@@ -21,8 +21,8 @@ class Client(discord.Client):
         self.tree = discord.app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
-        query_ids = "SELECT DISTINCT message_id FROM form_views ORDER BY id;"
-        query_views = "SELECT * FROM form_views WHERE message_id = $1;"
+        query_ids = "SELECT DISTINCT message_id FROM form_views;"
+        query_views = "SELECT * FROM form_views WHERE message_id = $1 ORDER BY id;"
 
         self.pool = await asyncpg.create_pool(os.getenv("FORMS_DB_URL"))
         for record in await self.pool.fetch(query_ids):
