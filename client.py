@@ -16,11 +16,12 @@ class Client(discord.Client):
     pool: asyncpg.Pool
 
     def __init__(self) -> None:
+        self.has_started = False
         super().__init__(intents=discord.Intents.default())
         self.tree = discord.app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
-        query_ids = "SELECT DISTINCT message_id FROM form_views;"
+        query_ids = "SELECT DISTINCT message_id FROM form_views ORDER BY id;"
         query_views = "SELECT * FROM form_views WHERE message_id = $1;"
 
         self.pool = await asyncpg.create_pool(os.getenv("FORMS_DB_URL"))
@@ -52,6 +53,8 @@ class Client(discord.Client):
 
     async def on_ready(self) -> None:
         await self.change_presence(status=discord.Status.offline)
+        if not self.has_started:
+            self.has_started = True
         log_channel = self.get_channel(int(os.getenv("FORMS_LOG_CHANNEL", "0")))
         if isinstance(log_channel, discord.TextChannel):
             logging.getLogger().addHandler(DiscordLogHandler(self, log_channel))

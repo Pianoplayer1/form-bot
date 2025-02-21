@@ -16,7 +16,9 @@ async def respond(
         await interaction.response.edit_message(content=None, embed=embed, view=None)
     else:
         await interaction.response.send_message(embed=embed, ephemeral=True)
-    logging.getLogger("client.responses").debug("%d: %s", content, interaction.user.id)
+    logging.getLogger("client.responses").debug(
+        "%s: %s", interaction.user.name, content
+    )
 
 
 async def respond_error(

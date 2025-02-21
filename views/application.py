@@ -80,8 +80,9 @@ class SendButton(ui.Button[ApplicationView]):
             self.parent_view.questions[0].pop(0)
             embed.title += " - " + username
             embed.add_field(name="Minecraft username", value=username, inline=False)
-
-        embed.add_field(name="Discord username", value=interaction.user.name)
+            embed.add_field(name="Discord username", value=interaction.user.name)
+        else:
+            embed.add_field(name="Username", value=interaction.user.display_name)
         answers = [a for modal in self.parent_view.answers for a in modal]
         questions = [q for modal in self.parent_view.questions for q in modal]
         db_answers = []
@@ -101,12 +102,12 @@ class SendButton(ui.Button[ApplicationView]):
         channel = interaction.client.get_channel(form["channel"])
         try:
             if not isinstance(channel, discord.TextChannel | discord.Thread):
-                raise discord.Forbidden(interaction.response, None)
+                raise ValueError
             await channel.send("@everyone" if form["ping"] else None, embed=embed)
             await respond_success(
                 interaction, form["confirmation"] or "Response recorded!", edit=True
             )
-        except discord.Forbidden:
+        except (discord.Forbidden, ValueError):
             await respond_error(
                 interaction,
                 "There was an error with your response. Please contact"
