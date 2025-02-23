@@ -110,7 +110,7 @@ class SendButton(ui.Button[ApplicationView]):
         except (discord.Forbidden, ValueError):
             await respond_error(
                 interaction,
-                "There was an error with your response. Please contact"
+                "An error occurred when processing your response.\nPlease contact"
                 " Pianoplayer1 (<@667445845792391208>).",
                 edit=True,
             )
@@ -179,8 +179,8 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
     first = f"\u001b[1;34;48mPlayer Stats of \u001b[1;31;48m{stats['username']}"
     second = f"\u001b[0;34;48mCurrent Guild:  \u001b[0;32;48m{guild_text}"
     third = (
-        f"\u001b[0;34;48mHighest Class:  \u001b[0;32;48m{highest_class['type']} Lv."
-        f" {highest_class['level']}"
+        "\u001b[0;34;48mHighest Class: "
+        f" \u001b[0;32;48m{highest_class['type'].title()} Lv. {highest_class['level']}"
     )
     embed.add_field(
         name="", value=f"```ansi\n{first}\n{second}\n{third}\n```", inline=False
@@ -189,7 +189,9 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
         name="Total Level", value=f"```hs\n{stats['globalData']['totalLevel']}\n```"
     )
     embed.add_field(name="Wars", value=f"```hs\n{stats['globalData']['wars']}\n```")
-    embed.add_field(name="Rank", value=f"```hs\n{stats['supportRank'].title()}\n```")
+    embed.add_field(
+        name="Rank", value=f"```hs\n{str(stats['supportRank']).title()}\n```"
+    )
     embed.add_field(name="First Join", value=f"```hs\n{stats['firstJoin'][:10]}\n```")
     embed.add_field(name="Last Seen", value=f"```hs\n{stats['lastJoin'][:10]}\n```")
     embed.add_field(name="Playtime", value=f"```hs\n{stats['playtime']:.0f} Hours\n```")
