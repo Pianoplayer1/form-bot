@@ -79,10 +79,10 @@ class SendButton(ui.Button[ApplicationView]):
             username = self.parent_view.answers[0].pop(0)
             self.parent_view.questions[0].pop(0)
             embed.title += " - " + username
-            embed.add_field(name="Minecraft username", value=username, inline=False)
-            embed.add_field(name="Discord username", value=interaction.user.name)
+            embed.add_field(name="Minecraft username:", value=username, inline=False)
+            embed.add_field(name="Discord username:", value=interaction.user.name)
         else:
-            embed.add_field(name="Username", value=interaction.user.display_name)
+            embed.add_field(name="Username:", value=interaction.user.display_name)
         answers = [a for modal in self.parent_view.answers for a in modal]
         questions = [q for modal in self.parent_view.questions for q in modal]
         db_answers = []

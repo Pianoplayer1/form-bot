@@ -13,9 +13,21 @@ class ModalEditModal(ui.Modal):
         self.pool = pool
         self.form_id = record["form_id"]
         self.items: list[ui.TextInput[ModalEditModal]] = [
-            ui.TextInput(label="Label", default=record["label"], max_length=80),
             ui.TextInput(
-                label="Title", default=record["title"], required=False, max_length=45
+                label="Label",
+                placeholder="The label of the button that opens this modal.",
+                default=record["label"],
+                max_length=80,
+            ),
+            ui.TextInput(
+                label="Title",
+                placeholder=(
+                    "The title of the modal. Defaults to the title of the form this"
+                    " modal belongs to."
+                ),
+                default=record["title"],
+                required=False,
+                max_length=45,
             ),
         ]
         for item in self.items:
@@ -71,12 +83,20 @@ class FormModalCommands(app_commands.Group):
         ]
 
     @app_commands.command()
+    @app_commands.describe(
+        label="The label of the button that opens this modal.",
+        title=(
+            "The title of the modal. Defaults to the title of the form this modal"
+            " belongs to."
+        ),
+    )
     async def add(
         self,
         interaction: discord.Interaction,
         label: app_commands.Range[str, 1, 80],
         title: app_commands.Range[str, 1, 45] | None = None,
     ) -> None:
+        """Add a new modal to the currently selected form."""
         query = (
             "INSERT INTO modals (form_id, label, title)"
             " SELECT form_id, $2, $3 FROM selected_forms WHERE user_id = $1"
@@ -91,13 +111,20 @@ class FormModalCommands(app_commands.Group):
                 " already exists in the currently selected form.",
             )
         else:
-            await respond_success(interaction, f"Modal `{label}` added.")
+            await respond_success(
+                interaction,
+                f"Modal `{label}` added\nSelect it with"
+                f" `/{interaction.command().root_parent.qualified_name} select`"
+                " to add questions.",
+            )
 
     @app_commands.command()
     @app_commands.autocomplete(modal=modal_autocomplete)
+    @app_commands.describe(modal="The label of the modal you want to edit.")
     async def edit(
         self, interaction: discord.Interaction, modal: app_commands.Range[str, 1, 80]
     ) -> None:
+        """Edit a modal of the currently selected form."""
         query = (
             "SELECT modals.* FROM modals"
             " JOIN selected_forms ON modals.form_id = selected_forms.form_id"
@@ -116,9 +143,11 @@ class FormModalCommands(app_commands.Group):
 
     @app_commands.command()
     @app_commands.autocomplete(modal=modal_autocomplete)
+    @app_commands.describe(modal="The label of the modal you want to select.")
     async def select(
         self, interaction: discord.Interaction, modal: app_commands.Range[str, 1, 80]
     ) -> None:
+        """Select a modal of the currently selected form to manage its questions."""
         query = (
             "INSERT INTO selected_modals (user_id, modal_id)"
             " SELECT user_id, id FROM modals"
@@ -135,13 +164,19 @@ class FormModalCommands(app_commands.Group):
                 " currently selected form.",
             )
         else:
-            await respond_success(interaction, f"Modal `{modal}` selected.")
+            await respond_success(
+                interaction,
+                f"Modal `{modal}` selected.\nYou can now use modal commands to edit its"
+                " questions.",
+            )
 
     @app_commands.command()
     @app_commands.autocomplete(modal=modal_autocomplete)
+    @app_commands.describe(modal="The label of the modal you want to remove.")
     async def remove(
         self, interaction: discord.Interaction, modal: app_commands.Range[str, 1, 80]
     ) -> None:
+        """Remove a modal of the currently selected form. WARNING: This action is permanent."""
         query = (
             "DELETE FROM modals"
             " WHERE form_id = (SELECT form_id FROM selected_forms WHERE user_id = $1)"

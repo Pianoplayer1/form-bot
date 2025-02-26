@@ -51,7 +51,7 @@ class ApplicationButton(ui.Button[StarterView]):
             for modal_record in await self.pool.fetch(query_modals, self.form_id)
         ]
         await interaction.response.send_message(
-            form_record["message"],
+            f"## {form_record['name']}\n\n{form_record['message']}\n** **",
             view=ApplicationView(self.pool, form_record, data),
             ephemeral=True,
         )

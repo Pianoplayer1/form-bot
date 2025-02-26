@@ -13,33 +13,39 @@ class QuestionEditModal(ui.Modal):
         self.pool = pool
         self.modal_id = record["modal_id"]
         self.items: list[ui.TextInput[QuestionEditModal]] = [
-            ui.TextInput(label="Label", default=record["label"], max_length=45),
+            ui.TextInput(
+                label="Label",
+                placeholder="The label (title) of the question.",
+                default=record["label"],
+                max_length=45,
+            ),
             ui.TextInput(
                 label="Placeholder",
+                placeholder="A placeholder text like this for this question.",
                 default=record["placeholder"],
                 required=False,
                 max_length=100,
             ),
             ui.TextInput(
                 label="Long Answer Field?",
-                default="Yes" if record["paragraph"] else "No",
                 placeholder="Yes / No",
+                default="Yes" if record["paragraph"] else "No",
                 max_length=5,
             ),
             ui.TextInput(
                 label="Required?",
-                default="Yes" if record["required"] else "No",
                 placeholder="Yes / No",
+                default="Yes" if record["required"] else "No",
                 max_length=5,
             ),
             ui.TextInput(
-                label="Length, formatted as (min)-(max)",
+                label="Answer length req., formatted as (min)-(max)",
+                placeholder="The maximum length can be up to 1024, defaults to 1000.",
                 default=(
                     f"{record['min_length'] or ''}-{record['max_length'] or ''}"
                     if record["min_length"] or record["max_length"]
                     else None
                 ),
-                placeholder="The maximum length can be up to 1024, defaults to 1000.",
                 required=False,
                 max_length=80,
             ),
@@ -138,6 +144,16 @@ class FormQuestionCommands(app_commands.Group):
         ]
 
     @app_commands.command()
+    @app_commands.describe(
+        label="The label (title) of the question.",
+        placeholder="A placeholder text (fill-out hint) for this question.",
+        paragraph=(
+            "Whether the answer field to this question should have multiple lines."
+        ),
+        required="Whether this question should be required to fill out.",
+        min_length="The minimum length of the answer.",
+        max_length="The maximum length of the answer.",
+    )
     async def add(
         self,
         interaction: discord.Interaction,
@@ -145,9 +161,10 @@ class FormQuestionCommands(app_commands.Group):
         placeholder: app_commands.Range[str, 1, 100] | None = None,
         paragraph: bool = False,
         required: bool = True,
-        min_length: app_commands.Range[int, 0, 4000] | None = None,
-        max_length: app_commands.Range[int, 1, 4000] | None = None,
+        min_length: app_commands.Range[int, 0, 1024] | None = None,
+        max_length: app_commands.Range[int, 1, 1024] | None = None,
     ) -> None:
+        """Add a new question to the currently selected modal (up to five per modal)."""
         query = (
             "INSERT INTO questions (modal_id, label, placeholder"
             " , paragraph, required, min_length, max_length)"
@@ -178,9 +195,11 @@ class FormQuestionCommands(app_commands.Group):
 
     @app_commands.command()
     @app_commands.autocomplete(question=question_autocomplete)
+    @app_commands.describe(question="The label of the question you want to edit.")
     async def edit(
         self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
     ) -> None:
+        """Edit a question of the currently selected modal."""
         query = (
             "SELECT questions.* FROM questions"
             " JOIN selected_modals ON questions.modal_id = selected_modals.modal_id"
@@ -199,9 +218,11 @@ class FormQuestionCommands(app_commands.Group):
 
     @app_commands.command()
     @app_commands.autocomplete(question=question_autocomplete)
+    @app_commands.describe(question="The label of the question you want to remove.")
     async def remove(
         self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
     ) -> None:
+        """Remove a question of the currently selected modal. WARNING: This action is permanent."""
         query = (
             "DELETE FROM questions"
             " WHERE modal_id = (SELECT modal_id FROM selected_modals WHERE user_id = $1"
