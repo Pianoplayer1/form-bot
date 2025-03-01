@@ -3,7 +3,7 @@ def table(columns: list[str], data: list[list[str]]) -> str:
     message = "│"
 
     for i, column in enumerate(columns):
-        width = max(*map(len, data[i]), len(column)) + 2
+        width = max(*(len(row[i]) for row in data), len(column)) + 2
         widths.append(width)
         message += f" {column.ljust(width - 1)}│"
 

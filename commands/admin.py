@@ -29,17 +29,15 @@ async def run_command(interaction: discord.Interaction, command: str) -> None:
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     stdout, stderr = (output.decode() for output in await process.communicate())
-    if stderr:
-        await respond_error(interaction, f"stdout:\n{stdout}\n\nstderr:\n{stderr}")
-    else:
-        await respond_success(interaction, stdout)
+    text = f"stdout:\n{stdout}\n\nstderr:\n{stderr}" if stderr else stdout
+    await interaction.response.send_message(f"```{text:.1994}```")
 
 
 async def send_sql_results(
-    interaction: discord.Interaction, records: list[Any]
+    interaction: discord.Interaction, records: list[asyncpg.Record]
 ) -> None:
-    fmt = table([c for c in records[0].keys()], [list(r.values()) for r in records])
-    fmt = f"```\n{fmt}\n```"
+    fmt = table(list(records[0].keys()), [list(r.values()) for r in records])
+    fmt = f"```{fmt}```"
     if len(fmt) > 2000:
         fp = io.BytesIO(fmt.encode("utf-8"))
         await interaction.response.send_message(file=discord.File(fp, "results.txt"))
