@@ -121,6 +121,7 @@ class AdminCommands(app_commands.Group):
     def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
         super().__init__(**kwargs)
         self.add_command(SQLCommands(pool, **kwargs))
+        self._last_result = None
         self.pool = pool
 
     @app_commands.command()
