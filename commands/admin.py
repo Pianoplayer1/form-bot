@@ -29,7 +29,7 @@ async def run_command(interaction: discord.Interaction, command: str) -> None:
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     stdout, stderr = (output.decode() for output in await process.communicate())
-    text = f"stdout:\n{stdout}\n\nstderr:\n{stderr}" if stderr else stdout
+    text = f"stdout:\n{stdout}\nstderr:\n{stderr}" if stderr else stdout
     await interaction.response.send_message(f"```{text:.1994}```")
 
 
