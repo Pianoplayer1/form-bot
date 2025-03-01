@@ -38,9 +38,7 @@ async def run_command(interaction: discord.Interaction, command: str) -> None:
 async def send_sql_results(
     interaction: discord.Interaction, records: list[Any]
 ) -> None:
-    fmt = table(
-        {c: len(c) + 2 for c in records[0].keys()}, [list(r.values()) for r in records]
-    )
+    fmt = table([c for c in records[0].keys()], [list(r.values()) for r in records])
     fmt = f"```\n{fmt}\n```"
     if len(fmt) > 2000:
         fp = io.BytesIO(fmt.encode("utf-8"))
@@ -165,6 +163,6 @@ class AdminCommands(app_commands.Group):
             )
         else:
             value = stdout.getvalue()
-            if ret is None:
+            if ret is not None:
                 self._last_result = ret
             await interaction.response.send_message(f"```py\n{value}{ret}\n```")

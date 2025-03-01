@@ -1,17 +1,20 @@
-def table(columns: dict[str, int], data: list[list[str]]) -> str:
+def table(columns: list[str], data: list[list[str]]) -> str:
+    widths = []
     message = "│"
 
-    for column, width in columns.items():
+    for i, column in enumerate(columns):
+        width = max(*map(len, data[i]), len(column)) + 2
+        widths.append(width)
         message += f" {column.ljust(width - 1)}│"
 
-    message += "\n├" + "┼".join("─" * width for width in columns.values()) + "┤"
+    message += "\n├" + "┼".join("─" * width for width in widths) + "┤"
 
     for row in data:
         message += "\n│"
         for i in range(len(columns)):
             try:
-                message += f" {str(row[i]).ljust(list(columns.values())[i] - 1)}│"
+                message += f" {str(row[i]).ljust(widths[i] - 1)}│"
             except IndexError:
-                message += " " * (list(columns.values())[i]) + "│"
+                message += " " * (widths[i]) + "│"
 
     return message
