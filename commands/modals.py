@@ -114,7 +114,7 @@ class FormModalCommands(app_commands.Group):
             await respond_success(
                 interaction,
                 f"Modal `{label}` added\nSelect it with"
-                f" `/{interaction.command().root_parent.qualified_name} select`"
+                f" `/{interaction.command.root_parent.qualified_name} select`"
                 " to add questions.",
             )
 

@@ -143,7 +143,7 @@ class FormCommands(app_commands.Group):
             await respond_success(
                 interaction,
                 f"Form `{name}` created.\nSelect it with"
-                f" `/{interaction.command().root_parent.qualified_name} select`"
+                f" `/{interaction.command.root_parent.qualified_name} select`"
                 " to add modals (pop-up windows that contain the form questions).",
             )
 

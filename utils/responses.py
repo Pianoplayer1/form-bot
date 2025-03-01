@@ -11,7 +11,7 @@ async def respond(
     *,
     edit: bool = False,
 ) -> None:
-    embed = discord.Embed(color=color, title=title, description=content)
+    embed = discord.Embed(color=color, title=title, description=f"{content:.4096}")
     if edit:
         await interaction.response.edit_message(content=None, embed=embed, view=None)
     else:
