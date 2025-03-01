@@ -44,7 +44,9 @@ class Client(discord.Client):
         test_guild_id = os.getenv("FORMS_TEST_GUILD")
         if test_guild_id is not None:
             test_guild = discord.Object(int(test_guild_id))
-            self.tree.add_command(AdminCommands(name="admin"), guild=test_guild)
+            self.tree.add_command(
+                AdminCommands(self.pool, name="admin"), guild=test_guild
+            )
             await self.tree.sync(guild=test_guild)
         self.tree.add_command(FormCommands(self.pool, name="forms"))
         self.tree.add_command(FormModalCommands(self.pool, name="modals"))
