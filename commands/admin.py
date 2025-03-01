@@ -37,12 +37,11 @@ async def send_sql_results(
     interaction: discord.Interaction, records: list[asyncpg.Record]
 ) -> None:
     fmt = table(list(records[0].keys()), [list(r.values()) for r in records])
-    fmt = f"```{fmt}```"
-    if len(fmt) > 2000:
+    if len(fmt) > 1994:
         fp = io.BytesIO(fmt.encode("utf-8"))
         await interaction.response.send_message(file=discord.File(fp, "results.txt"))
     else:
-        await interaction.response.send_message(fmt)
+        await interaction.response.send_message(f"```{fmt}```")
 
 
 class SQLCommands(app_commands.Group):
