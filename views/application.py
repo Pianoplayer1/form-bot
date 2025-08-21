@@ -163,9 +163,10 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
         stats = await res.json()
         res = await session.get(player_url + "/characters")
         if res.status != 200:
-            return
-        character_data: dict[str, dict[str, str]] = await res.json()
-    highest_class = max(character_data.values(), key=lambda x: (x["level"], x["xp"]))
+            highest_class = None
+        else:
+            char_data: dict[str, dict[str, str]] = await res.json()
+            highest_class = max(char_data.values(), key=lambda x: (x["level"], x["xp"]))
 
     guild_text = (
         "None"
@@ -181,17 +182,35 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
     third = (
         "\u001b[0;34;48mHighest Class: "
         f" \u001b[0;32;48m{highest_class['type'].title()} Lv. {highest_class['level']}"
+        if highest_class is not None
+        else ""
     )
     embed.add_field(
         name="", value=f"```ansi\n{first}\n{second}\n{third}\n```", inline=False
     )
+
+    try:
+        embed.add_field(
+            name="Total Level", value=f"```hs\n{stats['globalData']['totalLevel']}\n```"
+        )
+        embed.add_field(
+            name="Raids", value=f"```hs\n{stats['globalData']['raids']['total']}\n```"
+        )
+        embed.add_field(name="Wars", value=f"```hs\n{stats['globalData']['wars']}\n```")
+    except KeyError:
+        pass
+
     embed.add_field(
-        name="Total Level", value=f"```hs\n{stats['globalData']['totalLevel']}\n```"
+        name="Rank",
+        value=f"```hs\n{str(stats['supportRank']).title().replace('plus', '+')}\n```",
     )
-    embed.add_field(name="Wars", value=f"```hs\n{stats['globalData']['wars']}\n```")
-    embed.add_field(
-        name="Rank", value=f"```hs\n{str(stats['supportRank']).title()}\n```"
-    )
-    embed.add_field(name="First Join", value=f"```hs\n{stats['firstJoin'][:10]}\n```")
-    embed.add_field(name="Last Seen", value=f"```hs\n{stats['lastJoin'][:10]}\n```")
-    embed.add_field(name="Playtime", value=f"```hs\n{stats['playtime']:.0f} Hours\n```")
+
+    try:
+        embed.add_field(
+            name="First Join", value=f"```hs\n{stats['firstJoin'][:10]}\n```"
+        )
+        embed.add_field(
+            name="Playtime", value=f"```hs\n{stats['playtime']:.0f} Hours\n```"
+        )
+    except KeyError:
+        pass
