@@ -9,7 +9,7 @@ from views.starter import StarterView
 class SendView(ui.View):
     def __init__(
         self,
-        pool: asyncpg.Pool,  # type: ignore
+        pool: asyncpg.Pool,
         channel: discord.TextChannel | discord.Thread,
         content: str,
         embed: discord.Embed,
@@ -140,13 +140,11 @@ class SendView(ui.View):
             )
             return
 
-        await msg.edit(
-            view=StarterView(
-                self.pool,
-                msg.id,
-                [(b[0], b[1], discord.ButtonStyle(b[2]), b[3]) for b in self.buttons],
-            )
-        )
+        setup_data = [
+            (b[0] or "", b[1], discord.ButtonStyle(b[2]), b[3] or 0)
+            for b in self.buttons
+        ]
+        await msg.edit(view=StarterView(self.pool, msg.id, setup_data))
 
         await self.pool.executemany(
             query, [(msg.id, b[0], b[1], b[2], b[3]) for b in self.buttons]
@@ -167,8 +165,11 @@ class FormSelect(ui.Select[SendView]):
             await respond_error(interaction, "Something went wrong.")
             return
         value = int(selected_option.value)
-        b = self.view.buttons[self.view.current_button]
-        self.view.buttons[self.view.current_button] = (b[0], b[1], b[2], value, b[4])
+        if self.view is not None:
+            buttons = self.view.buttons
+            current_button = self.view.current_button
+            v1, v2, v3, _, v4 = buttons[current_button]
+            buttons[current_button] = (v1, v2, v3, value, v4)
         self.placeholder = selected_option.label
         selected_option.default = True
         await interaction.response.edit_message(view=self.view)
@@ -178,19 +179,21 @@ class EditModal(ui.Modal):
     def __init__(self, view: SendView) -> None:
         super().__init__(title=f"Editing Button {view.current_button + 1}")
         self.view = view
-        self.add_item(ui.TextInput(label="Label", max_length=80))
-        self.add_item(
-            ui.TextInput(
-                label="Emoji",
-                placeholder="Must be an actual emoji icon, not just an emoji name!",
-                required=False,
-                max_length=32,
-            )
+        self.label_input: ui.TextInput[SendView] = ui.TextInput(
+            label="Label", max_length=80
         )
+        self.emoji_input: ui.TextInput[SendView] = ui.TextInput(
+            label="Emoji",
+            placeholder="Must be an actual emoji icon, not just an emoji name!",
+            required=False,
+            max_length=32,
+        )
+        self.add_item(self.label_input)
+        self.add_item(self.emoji_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        label = self.children[0].value
-        emoji = self.children[1].value or None
+        label = self.label_input.value
+        emoji = self.emoji_input.value or None
         b = self.view.buttons[self.view.current_button]
         self.view.buttons[self.view.current_button] = (label, emoji, b[2], b[3], b[4])
         await self.view.update(interaction)

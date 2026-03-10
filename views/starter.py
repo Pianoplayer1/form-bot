@@ -1,5 +1,3 @@
-from typing import Any
-
 import asyncpg
 import discord
 from discord import ui
@@ -11,7 +9,7 @@ from views.application import ApplicationView
 class StarterView(ui.View):
     def __init__(
         self,
-        pool: asyncpg.Pool,  # type: ignore
+        pool: asyncpg.Pool,
         message_id: int,
         setup_data: list[tuple[str, str | None, discord.ButtonStyle, int]],
     ) -> None:
@@ -25,14 +23,14 @@ class StarterView(ui.View):
 class ApplicationButton(ui.Button[StarterView]):
     def __init__(
         self,
-        pool: asyncpg.Pool,  # type: ignore
+        pool: asyncpg.Pool,
         label: str,
         emoji: str | None,
         style: discord.ButtonStyle,
         form_id: int,
-        **kwargs: Any,
+        custom_id: str,
     ) -> None:
-        super().__init__(style=style, label=label, emoji=emoji, **kwargs)
+        super().__init__(style=style, label=label, emoji=emoji, custom_id=custom_id)
         self.pool = pool
         self.form_id = form_id
 

@@ -1,5 +1,3 @@
-from typing import Any
-
 import asyncpg
 import discord
 from discord import app_commands, ui
@@ -8,7 +6,7 @@ from utils.responses import respond_error, respond_success
 
 
 class QuestionEditModal(ui.Modal):
-    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record):  # type: ignore
+    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record) -> None:
         super().__init__(title=f"Editing {record['label']:.37}")
         self.pool = pool
         self.modal_id = record["modal_id"]
@@ -124,8 +122,8 @@ class QuestionEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormQuestionCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
-        super().__init__(**kwargs)
+    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+        super().__init__(name=name)
         self.pool = pool
 
     async def question_autocomplete(
@@ -222,7 +220,7 @@ class FormQuestionCommands(app_commands.Group):
     async def remove(
         self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
     ) -> None:
-        """Remove a question of the currently selected modal. WARNING: This action is permanent."""
+        """Remove a question of the selected form. WARNING: This action is permanent."""
         query = (
             "DELETE FROM questions"
             " WHERE modal_id = (SELECT modal_id FROM selected_modals WHERE user_id = $1"

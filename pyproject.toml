@@ -1,0 +1,40 @@
+[project]
+name = "form-bot"
+version = "0.1.0"
+description = "Discord Bot for creating interactive (Wynncraft-related) forms"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.13.3",
+    "asyncpg>=0.31.0",
+    "discord-py>=2.7.1",
+]
+
+[dependency-groups]
+dev = [
+    "asyncpg-stubs>=0.31.2",
+    "mypy>=1.19.1",
+    "ruff>=0.15.5",
+]
+
+[tool.ruff.lint]
+select = [
+    "ANN", # flake8-annotations
+    "ARG", # flake8-unused-arguments
+    "B", # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "E", # pycodestyle Error
+    "F", # Pyflakes
+    "I", # isort
+    "N", # pep8-naming
+    "PT", # flake8-pytest-style
+    "RET", # flake8-return
+    "S", # flake8-bandit
+    "SIM", # flake8-simplify
+    "UP", # pyupgrade
+    "W", # pycodestyle Warning
+]
+
+[tool.mypy]
+pretty = true
+strict = true

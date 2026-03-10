@@ -1,4 +1,4 @@
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 
 import aiohttp
 import asyncpg
@@ -11,7 +11,7 @@ from utils.responses import respond_error, respond_success
 class ApplicationView(ui.View):
     def __init__(
         self,
-        pool: asyncpg.Pool,  # type: ignore
+        pool: asyncpg.Pool,
         form_record: asyncpg.Record,
         data: list[tuple[asyncpg.Record, list[asyncpg.Record]]],
     ) -> None:
@@ -20,25 +20,27 @@ class ApplicationView(ui.View):
         self.form_record = form_record
         self.answers: list[list[str | None]] = []
         self.questions: list[list[asyncpg.Record]] = []
+        self.buttons: list[FormButton] = []
 
         for i, (modal_record, questions) in enumerate(data):
             self.answers.append([None] * len(questions))
             self.questions.append(questions)
-            self.add_item(
-                FormButton(
-                    self,
-                    modal_record["title"] or form_record["name"],
-                    modal_record["label"],
-                    i,
-                )
+            button = FormButton(
+                self,
+                modal_record["title"] or form_record["name"],
+                modal_record["label"],
+                i,
             )
-        self.add_item(SendButton(self))
+            self.add_item(button)
+            self.buttons.append(button)
+        self.send_button = SendButton(self)
+        self.add_item(self.send_button)
 
 
 class FormButton(ui.Button[ApplicationView]):
     def __init__(
         self, parent_view: ApplicationView, title: str, label: str, index: int
-    ):
+    ) -> None:
         super().__init__(label=label, style=discord.ButtonStyle.primary)
         self.parent_view = parent_view
         self.title = title
@@ -51,7 +53,7 @@ class FormButton(ui.Button[ApplicationView]):
 
 
 class SendButton(ui.Button[ApplicationView]):
-    def __init__(self, parent_view: ApplicationView):
+    def __init__(self, parent_view: ApplicationView) -> None:
         super().__init__(label="Send", disabled=True, style=discord.ButtonStyle.success)
         self.parent_view = parent_view
 
@@ -68,7 +70,7 @@ class SendButton(ui.Button[ApplicationView]):
         self.parent_view.stop()
         form = self.parent_view.form_record
 
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         response_id: int = await self.parent_view.pool.fetchval(
             query_response, interaction.user.name, timestamp, form["id"]
         )
@@ -78,7 +80,7 @@ class SendButton(ui.Button[ApplicationView]):
         if self.parent_view.questions[0][0]["label"].lower() == "minecraft username":
             username = self.parent_view.answers[0].pop(0)
             self.parent_view.questions[0].pop(0)
-            embed.title += " - " + username
+            embed.title = f"{embed.title} - {username}"
             embed.add_field(name="Minecraft username:", value=username, inline=False)
             embed.add_field(name="Discord username:", value=interaction.user.name)
         else:
@@ -86,7 +88,7 @@ class SendButton(ui.Button[ApplicationView]):
         answers = [a for modal in self.parent_view.answers for a in modal]
         questions = [q for modal in self.parent_view.questions for q in modal]
         db_answers = []
-        for answer, question in zip(answers, questions):
+        for answer, question in zip(answers, questions, strict=False):
             db_answers.append((response_id, question["id"], answer))
             embed.add_field(
                 name=question["label"]
@@ -117,7 +119,7 @@ class SendButton(ui.Button[ApplicationView]):
 
 
 class FormModal(ui.Modal):
-    def __init__(self, view: ApplicationView, title: str, index: int):
+    def __init__(self, view: ApplicationView, title: str, index: int) -> None:
         super().__init__(title=title)
         self.view = view
         self.index = index
@@ -136,7 +138,7 @@ class FormModal(ui.Modal):
                 max_length=question_record["max_length"] or 1000,
             )
             for question_record, value in zip(
-                view.questions[index], view.answers[index]
+                view.questions[index], view.answers[index], strict=False
             )
         ]
         for item in self.items:
@@ -145,12 +147,12 @@ class FormModal(ui.Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         for i, item in enumerate(self.items):
             self.view.answers[self.index][i] = item.value or None
-        self.view.children[self.index].style = discord.ButtonStyle.secondary
+        self.view.buttons[self.index].style = discord.ButtonStyle.secondary
         if all(
-            all(a is not None or not q["required"] for a, q in zip(*x))
-            for x in zip(self.view.answers, self.view.questions)
+            all(a is not None or not q["required"] for a, q in zip(*x, strict=False))
+            for x in zip(self.view.answers, self.view.questions, strict=False)
         ):
-            self.view.children[-1].disabled = False
+            self.view.send_button.disabled = False
         await interaction.response.edit_message(view=self.view)
 
 

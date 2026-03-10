@@ -1,5 +1,3 @@
-from typing import Any
-
 import asyncpg
 import discord
 from discord import app_commands, ui
@@ -9,7 +7,7 @@ from views.send import SendView
 
 
 class FormEditModal(ui.Modal):
-    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record):  # type: ignore
+    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record) -> None:
         super().__init__(title=f"Editing {record['name']:.37}")
         self.pool = pool
         self.items: list[ui.TextInput[FormEditModal]] = [
@@ -84,8 +82,8 @@ class FormEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
-        super().__init__(**kwargs)
+    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+        super().__init__(name=name)
         self.pool = pool
 
     async def form_autocomplete(
@@ -140,12 +138,16 @@ class FormCommands(app_commands.Group):
                 interaction, f"A form with name `{name}` already exists."
             )
         else:
-            await respond_success(
-                interaction,
-                f"Form `{name}` created.\nSelect it with"
-                f" `/{interaction.command.root_parent.qualified_name} select`"
-                " to add modals (pop-up windows that contain the form questions).",
-            )
+            message = f"Form `{result}` created."
+            if (
+                isinstance(interaction.command, app_commands.Command)
+                and (parent := interaction.command.root_parent) is not None
+            ):
+                message += (
+                    f"\nUse `/{parent.qualified_name}` select to add modals"
+                    f" (pop-up windows that contain the actual form questions)."
+                )
+            await respond_success(interaction, message)
 
     @app_commands.command()
     @app_commands.describe(form="The name of the form you want to edit.")
@@ -191,7 +193,7 @@ class FormCommands(app_commands.Group):
     async def remove(
         self, interaction: discord.Interaction, form: app_commands.Range[str, 1, 45]
     ) -> None:
-        """Remove a form. WARNING: This action is permanent, deleting a form and its responses."""
+        """Remove a form. WARNING: This action is permanent, deleting all responses."""
         query = "DELETE FROM forms WHERE name = $1;"
 
         result = await self.pool.execute(query, form)
@@ -211,7 +213,7 @@ class FormCommands(app_commands.Group):
         channel: discord.TextChannel | discord.Thread,
         content: str,
     ) -> None:
-        """Send a message with buttons for one or multiple forms to a channel in this server."""
+        """Send a message with buttons for one or multiple forms to a channel."""
         query = "SELECT * FROM forms;"
 
         embed = discord.Embed(

@@ -3,16 +3,13 @@ import enum
 import io
 import logging
 import subprocess
-import textwrap
-import traceback
-from contextlib import redirect_stdout
 from typing import Any
 
 import asyncpg
 import discord
 from discord import app_commands
 
-from utils.responses import respond_success, respond_error
+from utils.responses import respond_error, respond_success
 from utils.tables import table
 
 
@@ -45,9 +42,8 @@ async def send_sql_results(
 
 
 class SQLCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
-        super().__init__(**kwargs)
-        self.name = "sql"
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        super().__init__(name="sql")
         self.pool = pool
 
     @app_commands.command()
@@ -67,10 +63,10 @@ class SQLCommands(app_commands.Group):
             " FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = $1;"
         )
 
-        results = await self.pool.fetch(query, table_name)
-        if len(results) == 0:
-            return await respond_error(interaction, f"Table `{table_name}` not found.")
-        await send_sql_results(interaction, results)
+        if results := await self.pool.fetch(query, table_name):
+            await send_sql_results(interaction, results)
+        else:
+            await respond_error(interaction, f"Table `{table_name}` not found.")
 
     @app_commands.command()
     async def tables(self, interaction: discord.Interaction) -> None:
@@ -107,15 +103,16 @@ class SQLCommands(app_commands.Group):
             io.BytesIO(json[0].encode("utf-8")), filename="explain.json"
         )
         await interaction.response.send_message(file=file)
+        return None
 
 
 @app_commands.default_permissions(administrator=True)
 class AdminCommands(app_commands.Group):
     _last_result: Any | None
 
-    def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
-        super().__init__(**kwargs)
-        self.add_command(SQLCommands(pool, **kwargs))
+    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+        super().__init__(name=name)
+        self.add_command(SQLCommands(pool))
         self._last_result = None
         self.pool = pool
 
@@ -138,28 +135,3 @@ class AdminCommands(app_commands.Group):
         await respond_success(
             interaction, f"Set logging level of `{logger}` to `{level.name}`."
         )
-
-    @app_commands.command()
-    async def python(self, interaction: discord.Interaction, code: str) -> None:
-        env = {"interaction": interaction, "_": self._last_result}
-        try:
-            exec(f"async def func():\n{textwrap.indent(code, '  ')}", env)
-        except Exception as e:
-            return await interaction.response.send_message(
-                f"```py\n{e.__class__.__name__}: {e}\n```"
-            )
-
-        stdout = io.StringIO()
-        try:
-            with redirect_stdout(stdout):
-                ret = await env["func"]()
-        except Exception:
-            value = stdout.getvalue()
-            await interaction.response.send_message(
-                f"```py\n{value}{traceback.format_exc()}\n```"
-            )
-        else:
-            value = stdout.getvalue()
-            if ret is not None:
-                self._last_result = ret
-            await interaction.response.send_message(f"```py\n{value}{ret}\n```")

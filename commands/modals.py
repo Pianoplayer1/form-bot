@@ -1,5 +1,3 @@
-from typing import Any
-
 import asyncpg
 import discord
 from discord import app_commands, ui
@@ -8,7 +6,7 @@ from utils.responses import respond_error, respond_success
 
 
 class ModalEditModal(ui.Modal):
-    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record):  # type: ignore
+    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record) -> None:
         super().__init__(title=f"Editing {record['label']:.37}")
         self.pool = pool
         self.form_id = record["form_id"]
@@ -63,8 +61,8 @@ class ModalEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormModalCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, **kwargs: Any):  # type: ignore
-        super().__init__(**kwargs)
+    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+        super().__init__(name=name)
         self.pool = pool
 
     async def modal_autocomplete(
@@ -111,12 +109,13 @@ class FormModalCommands(app_commands.Group):
                 " already exists in the currently selected form.",
             )
         else:
-            await respond_success(
-                interaction,
-                f"Modal `{label}` added\nSelect it with"
-                f" `/{interaction.command.root_parent.qualified_name} select`"
-                " to add questions.",
-            )
+            message = f"Modal `{result}` added."
+            if (
+                isinstance(interaction.command, app_commands.Command)
+                and (parent := interaction.command.root_parent) is not None
+            ):
+                message += f"\nUse /`{parent.qualified_name}` select to add questions."
+            await respond_success(interaction, message)
 
     @app_commands.command()
     @app_commands.autocomplete(modal=modal_autocomplete)
@@ -176,7 +175,7 @@ class FormModalCommands(app_commands.Group):
     async def remove(
         self, interaction: discord.Interaction, modal: app_commands.Range[str, 1, 80]
     ) -> None:
-        """Remove a modal of the currently selected form. WARNING: This action is permanent."""
+        """Remove a modal of the selected form. WARNING: This action is permanent."""
         query = (
             "DELETE FROM modals"
             " WHERE form_id = (SELECT form_id FROM selected_forms WHERE user_id = $1)"
