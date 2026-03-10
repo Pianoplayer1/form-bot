@@ -2,46 +2,47 @@ import asyncpg
 import discord
 from discord import app_commands, ui
 
+from models import Question
 from utils.responses import respond_error, respond_success
 
 
 class QuestionEditModal(ui.Modal):
-    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record) -> None:
-        super().__init__(title=f"Editing {record['label']:.37}")
+    def __init__(self, pool: asyncpg.Pool, question: Question) -> None:
+        super().__init__(title=f"Editing {question.label:.37}")
         self.pool = pool
-        self.modal_id = record["modal_id"]
+        self.modal_id = question.modal_id
         self.items: list[ui.TextInput[QuestionEditModal]] = [
             ui.TextInput(
                 label="Label",
                 placeholder="The label (title) of the question.",
-                default=record["label"],
+                default=question.label,
                 max_length=45,
             ),
             ui.TextInput(
                 label="Placeholder",
                 placeholder="A placeholder text like this for this question.",
-                default=record["placeholder"],
+                default=question.placeholder,
                 required=False,
                 max_length=100,
             ),
             ui.TextInput(
                 label="Long Answer Field?",
                 placeholder="Yes / No",
-                default="Yes" if record["paragraph"] else "No",
+                default="Yes" if question.paragraph else "No",
                 max_length=5,
             ),
             ui.TextInput(
                 label="Required?",
                 placeholder="Yes / No",
-                default="Yes" if record["required"] else "No",
+                default="Yes" if question.required else "No",
                 max_length=5,
             ),
             ui.TextInput(
                 label="Answer length req., formatted as (min)-(max)",
                 placeholder="The maximum length can be up to 1024, defaults to 1000.",
                 default=(
-                    f"{record['min_length'] or ''}-{record['max_length'] or ''}"
-                    if record["min_length"] or record["max_length"]
+                    f"{question.min_length or ''}-{question.max_length or ''}"
+                    if question.min_length or question.max_length
                     else None
                 ),
                 required=False,
@@ -122,23 +123,27 @@ class QuestionEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormQuestionCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        selected_modals: dict[int, int],
+        name: str,
+    ) -> None:
         super().__init__(name=name)
         self.pool = pool
+        self.selected_modals = selected_modals
 
     async def question_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        query = (
-            "SELECT * FROM questions"
-            " JOIN selected_modals ON questions.modal_id = selected_modals.modal_id"
-            " WHERE user_id = $1 AND label ILIKE $2;"
-        )
+        modal_id = self.selected_modals.get(interaction.user.id)
+        if modal_id is None:
+            return []
+        query = "SELECT label FROM questions WHERE modal_id = $1 AND label ILIKE $2;"
 
-        records = await self.pool.fetch(query, interaction.user.id, current + "%")
         return [
             app_commands.Choice(name=record["label"], value=record["label"])
-            for record in records
+            for record in await self.pool.fetch(query, modal_id, current + "%")
         ]
 
     @app_commands.command()
@@ -163,29 +168,36 @@ class FormQuestionCommands(app_commands.Group):
         max_length: app_commands.Range[int, 1, 1024] | None = None,
     ) -> None:
         """Add a new question to the currently selected modal (up to five per modal)."""
+        modal_id = self.selected_modals.get(interaction.user.id)
+        if modal_id is None:
+            await respond_error(interaction, "No modal selected.")
+            return
+
         query = (
             "INSERT INTO questions (modal_id, label, placeholder"
             " , paragraph, required, min_length, max_length)"
-            " SELECT modal_id, $2, $3, $4, $5, $6, $7 FROM selected_modals"
-            " WHERE user_id = $1 AND ("
-            "  SELECT COUNT(*) FROM questions WHERE modal_id = selected_modals.modal_id"
-            " ) < 5 ON CONFLICT (modal_id, label) DO NOTHING;"
+            " SELECT $1, $2, $3, $4, $5, $6, $7"
+            " WHERE (SELECT COUNT(*) FROM questions WHERE modal_id = $1) < 5"
+            " ON CONFLICT (modal_id, label) DO NOTHING"
+            " RETURNING id;"
         )
 
-        result = await self.pool.execute(
-            query,
-            interaction.user.id,
-            label,
-            placeholder,
-            paragraph,
-            required,
-            min_length,
-            max_length,
-        )
-        if result.endswith("0"):
+        if (
+            await self.pool.fetchval(
+                query,
+                modal_id,
+                label,
+                placeholder,
+                paragraph,
+                required,
+                min_length,
+                max_length,
+            )
+            is None
+        ):
             await respond_error(
                 interaction,
-                "No modal with less than five questions selected or a question with"
+                "The selected modal already has five questions or a question with"
                 f" label `{label}` already exists in the currently selected modal.",
             )
         else:
@@ -198,21 +210,23 @@ class FormQuestionCommands(app_commands.Group):
         self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
     ) -> None:
         """Edit a question of the currently selected modal."""
-        query = (
-            "SELECT questions.* FROM questions"
-            " JOIN selected_modals ON questions.modal_id = selected_modals.modal_id"
-            " WHERE user_id = $1 AND label = $2;"
-        )
+        modal_id = self.selected_modals.get(interaction.user.id)
+        if modal_id is None:
+            await respond_error(interaction, "No modal selected.")
+            return
 
-        record = await self.pool.fetchrow(query, interaction.user.id, question)
-        if record is None:
+        query = "SELECT * FROM questions WHERE modal_id = $1 AND label = $2;"
+
+        row = await self.pool.fetchrow(query, modal_id, question)
+        if row is None:
             await respond_error(
                 interaction,
-                "No modal selected or a question with"
-                f" label `{question}` already exists in the currently selected modal.",
+                f"Question `{question}` not found in the currently selected modal.",
             )
         else:
-            await interaction.response.send_modal(QuestionEditModal(self.pool, record))
+            await interaction.response.send_modal(
+                QuestionEditModal(self.pool, Question(**dict(row)))
+            )
 
     @app_commands.command()
     @app_commands.autocomplete(question=question_autocomplete)
@@ -221,18 +235,17 @@ class FormQuestionCommands(app_commands.Group):
         self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
     ) -> None:
         """Remove a question of the selected form. WARNING: This action is permanent."""
-        query = (
-            "DELETE FROM questions"
-            " WHERE modal_id = (SELECT modal_id FROM selected_modals WHERE user_id = $1"
-            ") AND label = $2;"
-        )
+        modal_id = self.selected_modals.get(interaction.user.id)
+        if modal_id is None:
+            await respond_error(interaction, "No modal selected.")
+            return
 
-        record = await self.pool.fetchrow(query, interaction.user.id, question)
-        if record is None:
+        query = "DELETE FROM questions WHERE modal_id = $1 AND label = $2 RETURNING id;"
+
+        if await self.pool.fetchval(query, modal_id, question) is None:
             await respond_error(
                 interaction,
-                "No modal selected or a question with"
-                f" label `{question}` already exists in the currently selected modal.",
+                f"Question `{question}` not found in the currently selected modal.",
             )
         else:
             await respond_success(interaction, f"Question `{question}` removed.")

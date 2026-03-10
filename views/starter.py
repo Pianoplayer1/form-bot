@@ -2,6 +2,7 @@ import asyncpg
 import discord
 from discord import ui
 
+from models import Form, Modal, Question
 from utils.responses import respond_error
 from views.application import ApplicationView
 
@@ -15,9 +16,8 @@ class StarterView(ui.View):
     ) -> None:
         super().__init__(timeout=None)
         for i, datum in enumerate(setup_data):
-            self.add_item(
-                ApplicationButton(pool, *datum, custom_id=f"{message_id}-{i}")
-            )
+            button = ApplicationButton(pool, *datum, custom_id=f"{message_id}-{i}")
+            self.add_item(button)
 
 
 class ApplicationButton(ui.Button[StarterView]):
@@ -39,17 +39,19 @@ class ApplicationButton(ui.Button[StarterView]):
         query_modals = "SELECT * FROM modals WHERE form_id = $1 ORDER BY id;"
         query_questions = "SELECT * FROM questions WHERE modal_id = $1 ORDER BY id;"
 
-        form_record = await self.pool.fetchrow(query_form, self.form_id)
-        if form_record is None:
+        row = await self.pool.fetchrow(query_form, self.form_id)
+        if row is None:
             await respond_error(interaction, "This form does not exist anymore.")
             return
 
-        data = [
-            (modal_record, await self.pool.fetch(query_questions, modal_record["id"]))
-            for modal_record in await self.pool.fetch(query_modals, self.form_id)
-        ]
+        form = Form(**dict(row))
+        data = []
+        for modal_row in await self.pool.fetch(query_modals, self.form_id):
+            modal = Modal(**dict(modal_row))
+            question_rows = await self.pool.fetch(query_questions, modal.id)
+            data.append((modal, [Question(**dict(q)) for q in question_rows]))
         await interaction.response.send_message(
-            f"## {form_record['name']}\n\n{form_record['message']}\n** **",
-            view=ApplicationView(self.pool, form_record, data),
+            f"## {form.name}\n\n{form.message}\n** **",
+            view=ApplicationView(self.pool, form, data),
             ephemeral=True,
         )

@@ -2,16 +2,17 @@ import asyncpg
 import discord
 from discord import app_commands, ui
 
+from models import Form
 from utils.responses import respond_error, respond_success
 from views.send import SendView
 
 
 class FormEditModal(ui.Modal):
-    def __init__(self, pool: asyncpg.Pool, record: asyncpg.Record) -> None:
-        super().__init__(title=f"Editing {record['name']:.37}")
+    def __init__(self, pool: asyncpg.Pool, form: Form) -> None:
+        super().__init__(title=f"Editing {form.name:.37}")
         self.pool = pool
         self.items: list[ui.TextInput[FormEditModal]] = [
-            ui.TextInput(label="Name", default=record["name"], max_length=45),
+            ui.TextInput(label="Name", default=form.name, max_length=45),
             ui.TextInput(
                 label="Message",
                 style=discord.TextStyle.long,
@@ -19,7 +20,7 @@ class FormEditModal(ui.Modal):
                     "The initial message that is displayed to users filling out this"
                     " form."
                 ),
-                default=record["message"],
+                default=form.message,
                 required=False,
                 max_length=2000,
             ),
@@ -30,14 +31,14 @@ class FormEditModal(ui.Modal):
                     "The confirmation message users get after submitting. Defaults to"
                     " 'Response Recorded!'"
                 ),
-                default=record["confirmation"],
+                default=form.confirmation,
                 required=False,
                 max_length=2000,
             ),
             ui.TextInput(
                 label="Channel",
                 placeholder="The id of a text channel where responses will be sent to.",
-                default=record["channel"],
+                default=str(form.channel) if form.channel is not None else None,
                 required=False,
                 max_length=18,
             ),
@@ -82,14 +83,20 @@ class FormEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormCommands(app_commands.Group):
-    def __init__(self, pool: asyncpg.Pool, name: str) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        selected_forms: dict[int, int],
+        name: str,
+    ) -> None:
         super().__init__(name=name)
         self.pool = pool
+        self.selected_forms = selected_forms
 
     async def form_autocomplete(
         self, _: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        query = "SELECT * FROM forms WHERE name ILIKE $1;"
+        query = "SELECT name FROM forms WHERE name ILIKE $1;"
 
         return [
             app_commands.Choice(name=record["name"], value=record["name"])
@@ -120,12 +127,11 @@ class FormCommands(app_commands.Group):
         query = (
             "INSERT INTO forms (name, message, confirmation, channel, ping)"
             " VALUES ($1, $2, $3, $4, $5)"
-            " ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name || ' (' || ("
-            "  SELECT COUNT(*) FROM forms WHERE name LIKE EXCLUDED.name || ' (%)'"
-            " ) || ')';"
+            " ON CONFLICT (name) DO NOTHING"
+            " RETURNING name;"
         )
 
-        result = await self.pool.execute(
+        result_name = await self.pool.fetchval(
             query,
             name,
             message,
@@ -133,21 +139,21 @@ class FormCommands(app_commands.Group):
             None if channel is None else channel.id,
             ping,
         )
-        if result.endswith("0"):
+        if result_name is None:
             await respond_error(
                 interaction, f"A form with name `{name}` already exists."
             )
         else:
-            message = f"Form `{result}` created."
+            msg = f"Form `{name}` created."
             if (
                 isinstance(interaction.command, app_commands.Command)
                 and (parent := interaction.command.root_parent) is not None
             ):
-                message += (
+                msg += (
                     f"\nUse `/{parent.qualified_name}` select to add modals"
                     f" (pop-up windows that contain the actual form questions)."
                 )
-            await respond_success(interaction, message)
+            await respond_success(interaction, msg)
 
     @app_commands.command()
     @app_commands.describe(form="The name of the form you want to edit.")
@@ -158,11 +164,13 @@ class FormCommands(app_commands.Group):
         """Edit a form."""
         query = "SELECT * FROM forms WHERE name = $1;"
 
-        record = await self.pool.fetchrow(query, form)
-        if record is None:
+        row = await self.pool.fetchrow(query, form)
+        if row is None:
             await respond_error(interaction, f"Form `{form}` not found.")
         else:
-            await interaction.response.send_modal(FormEditModal(self.pool, record))
+            await interaction.response.send_modal(
+                FormEditModal(self.pool, Form(**dict(row)))
+            )
 
     @app_commands.command()
     @app_commands.describe(form="The name of the form you want to select.")
@@ -171,16 +179,13 @@ class FormCommands(app_commands.Group):
         self, interaction: discord.Interaction, form: app_commands.Range[str, 1, 45]
     ) -> None:
         """Select a form to manage its modals."""
-        query = (
-            "INSERT INTO selected_forms (user_id, form_id)"
-            " SELECT $1, id FROM forms WHERE name = $2"
-            " ON CONFLICT (user_id) DO UPDATE SET form_id = EXCLUDED.form_id;"
-        )
+        query = "SELECT id FROM forms WHERE name = $1;"
 
-        result = await self.pool.execute(query, interaction.user.id, form)
-        if result.endswith("0"):
+        form_id = await self.pool.fetchval(query, form)
+        if form_id is None:
             await respond_error(interaction, f"Form `{form}` not found.")
         else:
+            self.selected_forms[interaction.user.id] = form_id
             await respond_success(
                 interaction,
                 f"Form `{form}` selected.\nYou can now use modal commands to edit its"
@@ -194,10 +199,9 @@ class FormCommands(app_commands.Group):
         self, interaction: discord.Interaction, form: app_commands.Range[str, 1, 45]
     ) -> None:
         """Remove a form. WARNING: This action is permanent, deleting all responses."""
-        query = "DELETE FROM forms WHERE name = $1;"
+        query = "DELETE FROM forms WHERE name = $1 RETURNING id;"
 
-        result = await self.pool.execute(query, form)
-        if result.endswith("0"):
+        if await self.pool.fetchval(query, form) is None:
             await respond_error(interaction, f"Form `{form}` not found.")
         else:
             await respond_success(interaction, f"Form `{form}` removed.")
@@ -223,7 +227,7 @@ class FormCommands(app_commands.Group):
         embed.add_field(
             name="Button 1/1", value="Current Label: [None]\nCurrent Emoji: [None]"
         )
-        forms = await self.pool.fetch(query)
+        forms = [Form(**dict(r)) for r in await self.pool.fetch(query)]
         await interaction.response.send_message(
             embed=embed,
             view=SendView(self.pool, channel, content, embed, forms),

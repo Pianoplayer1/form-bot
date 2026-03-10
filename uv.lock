@@ -245,7 +245,7 @@ wheels = [
 ]
 
 [[package]]
-name = "formbot"
+name = "form-bot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

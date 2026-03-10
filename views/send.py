@@ -2,6 +2,7 @@ import asyncpg
 import discord
 from discord import ui
 
+from models import Form
 from utils.responses import respond_error, respond_success
 from views.starter import StarterView
 
@@ -13,7 +14,7 @@ class SendView(ui.View):
         channel: discord.TextChannel | discord.Thread,
         content: str,
         embed: discord.Embed,
-        forms: list[asyncpg.Record],
+        forms: list[Form],
     ) -> None:
         super().__init__(timeout=None)
         self.pool = pool
@@ -32,8 +33,8 @@ class SendView(ui.View):
         select: ui.Select[SendView] = FormSelect(
             placeholder="Select a form for this button",
             options=[
-                discord.SelectOption(label=record["name"], value=str(record["id"]))
-                for record in self.forms
+                discord.SelectOption(label=form.name, value=str(form.id))
+                for form in self.forms
             ],
             row=1,
         )
