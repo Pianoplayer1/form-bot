@@ -24,6 +24,7 @@ class Question:
     id: int
     modal_id: int
     label: str
+    description: str | None
     placeholder: str | None
     paragraph: bool
     required: bool

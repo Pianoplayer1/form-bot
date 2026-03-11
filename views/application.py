@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 import aiohttp
@@ -5,8 +6,10 @@ import asyncpg
 import discord
 from discord import ui
 
-from models import Form, Modal, Question
+from database.models import Form, Modal, Question
 from utils.responses import respond_error, respond_success
+
+log = logging.getLogger(__name__)
 
 
 class ApplicationView(ui.View):
@@ -94,7 +97,7 @@ class SendButton(ui.Button[ApplicationView]):
             embed.add_field(name="Username:", value=interaction.user.display_name)
 
         for question, answer in zip(
-            all_questions[start:], all_answers[start:], strict=False
+            all_questions[start:], all_answers[start:], strict=True
         ):
             embed.add_field(
                 name=question.label + ("" if question.label.endswith("?") else ":"),
@@ -107,36 +110,40 @@ class SendButton(ui.Button[ApplicationView]):
             response_id: int = await conn.fetchval(
                 query_response, interaction.user.name, timestamp, form.id
             )
-            db_answers = [
+            answers_for_db = [
                 (response_id, q.id, a)
-                for q, a in zip(
-                    all_questions[start:], all_answers[start:], strict=False
-                )
+                for q, a in zip(all_questions[start:], all_answers[start:], strict=True)
             ]
-            await conn.executemany(query_answers, db_answers)
+            await conn.executemany(query_answers, answers_for_db)
 
         if username is not None:
             await add_player_stats(embed, username)
 
-        channel = (
-            interaction.client.get_channel(form.channel)
-            if form.channel is not None
-            else None
-        )
-        try:
-            if not isinstance(channel, discord.TextChannel | discord.Thread):
-                raise ValueError
-            await channel.send("@everyone" if form.ping else None, embed=embed)
-            await respond_success(
-                interaction, form.confirmation or "Response recorded!", edit=True
-            )
-        except (discord.Forbidden, ValueError):
-            await respond_error(
-                interaction,
-                "An error occurred when processing your response.\nPlease contact"
-                " Pianoplayer1 (<@667445845792391208>).",
-                edit=True,
-            )
+        if form.channel is not None and isinstance(
+            channel := interaction.client.get_channel(form.channel),
+            discord.TextChannel | discord.Thread,
+        ):
+            try:
+                await channel.send("@everyone" if form.ping else None, embed=embed)
+                log.info("%s submitted form %r", interaction.user, form.name)
+                await respond_success(
+                    interaction, form.confirmation or "Response recorded!", edit=True
+                )
+            except discord.Forbidden:
+                log.warning(
+                    "No permission to send to channel %d for form %r",
+                    form.channel,
+                    form.name,
+                )
+                await respond_error(
+                    interaction,
+                    "An error occurred when processing your response.\n"
+                    " Please contact Pianoplayer1 (<@667445845792391208>).",
+                    edit=True,
+                )
+        else:
+            log.warning("No channel configured for form %r", form.name)
+            await respond_error(interaction, "No channel set", edit=True)
 
 
 class FormModal(ui.Modal):
@@ -144,9 +151,12 @@ class FormModal(ui.Modal):
         super().__init__(title=title)
         self.view = view
         self.index = index
-        self.items: list[ui.TextInput[FormModal]] = [
-            ui.TextInput(
-                label=question.label,
+        self.inputs: list[ui.TextInput[FormModal]] = []
+
+        for question, value in zip(
+            view.questions[index], view.answers[index], strict=False
+        ):
+            text_input: ui.TextInput[FormModal] = ui.TextInput(
                 style=(
                     discord.TextStyle.long
                     if question.paragraph
@@ -158,16 +168,18 @@ class FormModal(ui.Modal):
                 min_length=question.min_length,
                 max_length=question.max_length or 1000,
             )
-            for question, value in zip(
-                view.questions[index], view.answers[index], strict=False
+            self.inputs.append(text_input)
+            self.add_item(
+                ui.Label(
+                    text=question.label,
+                    description=question.description,
+                    component=text_input,
+                )
             )
-        ]
-        for item in self.items:
-            self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        for i, item in enumerate(self.items):
-            self.view.answers[self.index][i] = item.value or None
+        for i, text_input in enumerate(self.inputs):
+            self.view.answers[self.index][i] = text_input.value or None
         self.view.buttons[self.index].style = discord.ButtonStyle.secondary
         if all(
             all(a is not None or not q.required for a, q in zip(*x, strict=False))
@@ -184,17 +196,16 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
         if res.status != 200:
             return
         stats = await res.json()
+
+        highest_class = None
         res = await session.get(player_url + "/characters")
-        if res.status != 200:
-            highest_class = None
-        else:
-            char_data: dict[str, dict[str, str]] = await res.json()
+        if res.status == 200:
             try:
                 highest_class = max(
-                    char_data.values(), key=lambda x: (x["level"], x["xp"])
+                    (await res.json()).values(), key=lambda x: (x["level"], x["xp"])
                 )
             except (ValueError, KeyError):
-                highest_class = None
+                log.debug("Failed to parse characters for %s", username)
 
     try:
         guild_text = (
@@ -240,4 +251,4 @@ async def add_player_stats(embed: discord.Embed, username: str) -> None:
             name="Playtime", value=f"```hs\n{stats['playtime']:.0f} Hours\n```"
         )
     except (KeyError, TypeError):
-        pass
+        log.debug("Incomplete stats for %s", username)

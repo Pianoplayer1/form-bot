@@ -2,7 +2,7 @@ import asyncpg
 import discord
 from discord import ui
 
-from models import Form, Modal, Question
+from database.models import Form, Modal, Question
 from utils.responses import respond_error
 from views.application import ApplicationView
 

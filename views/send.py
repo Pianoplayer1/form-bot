@@ -1,10 +1,14 @@
+import logging
+
 import asyncpg
 import discord
 from discord import ui
 
-from models import Form
+from database.models import Form
 from utils.responses import respond_error, respond_success
 from views.starter import StarterView
+
+log = logging.getLogger(__name__)
 
 
 class SendView(ui.View):
@@ -135,6 +139,7 @@ class SendView(ui.View):
         try:
             msg = await self.channel.send(self.content)
         except discord.Forbidden:
+            log.warning("No permission to send to channel %d", self.channel.id)
             await respond_error(
                 interaction,
                 f"No access to <#{self.channel.id}>, message could not be sent.",
@@ -149,6 +154,11 @@ class SendView(ui.View):
 
         await self.pool.executemany(
             query, [(msg.id, b[0], b[1], b[2], b[3]) for b in self.buttons]
+        )
+        log.info(
+            "%s sent form message to channel %d",
+            interaction.user,
+            self.channel.id,
         )
         await respond_success(
             interaction, f"Message sent to <#{self.channel.id}>.", edit=True

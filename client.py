@@ -6,10 +6,12 @@ import discord
 
 from commands.admin import AdminCommands
 from commands.forms import FormCommands
-from commands.modals import FormModalCommands
+from commands.pages import FormPageCommands
 from commands.questions import FormQuestionCommands
 from utils.logger import DiscordLogHandler
 from views.starter import StarterView
+
+log = logging.getLogger(__name__)
 
 
 class Client(discord.Client):
@@ -25,7 +27,6 @@ class Client(discord.Client):
 
         self.pool = await asyncpg.create_pool(os.getenv("FORMS_DB_URL"))
         selected_forms: dict[int, int] = {}
-        selected_modals: dict[int, int] = {}
 
         # Add persistent views to client
         for record in await self.pool.fetch(query_ids):
@@ -47,11 +48,9 @@ class Client(discord.Client):
 
         # Setup other commands globally
         self.tree.add_command(FormCommands(self.pool, selected_forms, name="forms"))
+        self.tree.add_command(FormPageCommands(self.pool, selected_forms, name="pages"))
         self.tree.add_command(
-            FormModalCommands(self.pool, selected_forms, selected_modals, name="modals")
-        )
-        self.tree.add_command(
-            FormQuestionCommands(self.pool, selected_modals, name="questions")
+            FormQuestionCommands(self.pool, selected_forms, name="questions")
         )
         await self.tree.sync()
 
@@ -63,8 +62,8 @@ class Client(discord.Client):
         if isinstance(log_channel, discord.TextChannel):
             logging.getLogger().addHandler(DiscordLogHandler(self, log_channel))
         else:
-            logging.getLogger("client").warning("Discord logging channel not found")
-        logging.getLogger("client").info("Booted up")
+            log.warning("Discord logging channel not found")
+        log.info("Booted up")
 
 
 if __name__ == "__main__":

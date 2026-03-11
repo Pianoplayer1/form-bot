@@ -2,6 +2,8 @@ import logging
 
 import discord
 
+log = logging.getLogger(__name__)
+
 
 async def respond(
     interaction: discord.Interaction,
@@ -16,9 +18,7 @@ async def respond(
         await interaction.response.edit_message(content=None, embed=embed, view=None)
     else:
         await interaction.response.send_message(embed=embed, ephemeral=True)
-    logging.getLogger("client.responses").debug(
-        "%s: %s", interaction.user.name, content
-    )
+    log.debug("%s: %s", interaction.user.name, content)
 
 
 async def respond_error(

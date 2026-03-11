@@ -1,9 +1,13 @@
+import logging
+
 import asyncpg
 import discord
-from discord import app_commands, ui
+from discord import CheckboxGroupOption, app_commands, ui
 
-from models import Question
+from database.models import Question
 from utils.responses import respond_error, respond_success
+
+log = logging.getLogger(__name__)
 
 
 class QuestionEditModal(ui.Modal):
@@ -11,72 +15,85 @@ class QuestionEditModal(ui.Modal):
         super().__init__(title=f"Editing {question.label:.37}")
         self.pool = pool
         self.modal_id = question.modal_id
-        self.items: list[ui.TextInput[QuestionEditModal]] = [
-            ui.TextInput(
-                label="Label",
-                placeholder="The label (title) of the question.",
-                default=question.label,
-                max_length=45,
-            ),
-            ui.TextInput(
-                label="Placeholder",
-                placeholder="A placeholder text like this for this question.",
-                default=question.placeholder,
-                required=False,
-                max_length=100,
-            ),
-            ui.TextInput(
-                label="Long Answer Field?",
-                placeholder="Yes / No",
-                default="Yes" if question.paragraph else "No",
-                max_length=5,
-            ),
-            ui.TextInput(
-                label="Required?",
-                placeholder="Yes / No",
-                default="Yes" if question.required else "No",
-                max_length=5,
-            ),
-            ui.TextInput(
-                label="Answer length req., formatted as (min)-(max)",
-                placeholder="The maximum length can be up to 1024, defaults to 1000.",
-                default=(
-                    f"{question.min_length or ''}-{question.max_length or ''}"
-                    if question.min_length or question.max_length
-                    else None
+
+        self.label_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
+            label="Label",
+            placeholder="The label (title) of the question.",
+            default=question.label,
+            max_length=45,
+        )
+        self.description_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
+            label="Description",
+            placeholder="An optional description shown below the label.",
+            default=question.description,
+            required=False,
+            max_length=100,
+        )
+        self.placeholder_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
+            label="Placeholder",
+            placeholder="A placeholder text like this for this question.",
+            default=question.placeholder,
+            required=False,
+            max_length=100,
+        )
+        self.checkboxes: ui.CheckboxGroup[QuestionEditModal] = ui.CheckboxGroup(
+            options=[
+                CheckboxGroupOption(
+                    label="Long answer field",
+                    value="paragraph",
+                    default=question.paragraph,
                 ),
-                required=False,
-                max_length=80,
+                CheckboxGroupOption(
+                    label="Required",
+                    value="required",
+                    default=question.required,
+                ),
+            ],
+        )
+        self.length_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
+            label="Answer length req., formatted as (min)-(max)",
+            placeholder="The maximum length can be up to 1024, defaults to 1000.",
+            default=(
+                f"{question.min_length or ''}-{question.max_length or ''}"
+                if question.min_length or question.max_length
+                else None
             ),
-        ]
-        for item in self.items:
-            self.add_item(item)
+            required=False,
+            max_length=80,
+        )
+
+        self.add_item(self.label_input)
+        self.add_item(self.description_input)
+        self.add_item(self.placeholder_input)
+        self.add_item(self.checkboxes)
+        self.add_item(self.length_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM questions WHERE modal_id = $1 AND label = $2;"
         query_update = (
             "UPDATE questions"
-            " SET label = $3, placeholder = $4, paragraph = $5"
-            " , required = $6, min_length = $7, max_length = $8"
+            " SET label = $3, description = $4, placeholder = $5, paragraph = $6"
+            " , required = $7, min_length = $8, max_length = $9"
             " WHERE modal_id = $1 AND label = $2;"
         )
 
-        if self.items[0].value != self.items[0].default and await self.pool.fetchval(
-            query_exists, self.modal_id, self.items[0].value
+        label = self.label_input.value
+        if label != self.label_input.default and await self.pool.fetchval(
+            query_exists, self.modal_id, label
         ):
             await respond_error(
                 interaction,
-                f"A question with label `{self.items[0].value}` already exists in the"
-                " currently selected modal.",
+                f"A question with label `{label}` already exists on this page.",
             )
             return
 
-        long_answer = self.items[2].value.lower().startswith("y")
-        required = self.items[3].value.lower().startswith("y")
+        selected = self.checkboxes.values
+        long_answer = "paragraph" in selected
+        required = "required" in selected
         min_length = max_length = None
-        if self.items[4].value:
+        if self.length_input.value:
             try:
-                parts = self.items[4].value.split("-")
+                parts = self.length_input.value.split("-")
                 if len(parts) != 2 or not parts[0] or not parts[1]:
                     raise ValueError
                 min_length = int(parts[0])
@@ -96,28 +113,17 @@ class QuestionEditModal(ui.Modal):
         await self.pool.execute(
             query_update,
             self.modal_id,
-            self.items[0].default,
-            self.items[0].value,
-            self.items[1].value or None,
+            self.label_input.default,
+            label,
+            self.description_input.value or None,
+            self.placeholder_input.value or None,
             long_answer,
             required,
             min_length,
             max_length,
         )
-        text = f"Question `{self.items[0].value}` updated."
-        if self.items[2].value.lower() not in ("yes", "no"):
-            text += (
-                f"\n\nNote: You set the `Long Answer` field to `{self.items[2].value}`."
-                " This is interpreted as a "
-                + ("yes (long answer)." if long_answer else "no (short answer).")
-            )
-        if self.items[3].value.lower() not in ("yes", "no"):
-            text += (
-                f"\n\nNote: You set the `Required` field to `{self.items[3].value}`."
-                " This is interpreted as a "
-                + ("yes (required)." if required else "no (not required).")
-            )
-        await respond_success(interaction, text)
+        log.info("%s edited question %r", interaction.user, label)
+        await respond_success(interaction, f"Question `{label}` updated.")
 
 
 @app_commands.default_permissions(administrator=True)
@@ -126,103 +132,158 @@ class FormQuestionCommands(app_commands.Group):
     def __init__(
         self,
         pool: asyncpg.Pool,
-        selected_modals: dict[int, int],
+        selected_forms: dict[int, int],
         name: str,
     ) -> None:
         super().__init__(name=name)
         self.pool = pool
-        self.selected_modals = selected_modals
+        self.selected_forms = selected_forms
+
+    async def _fetch_numbered_questions(self, form_id: int) -> list[tuple[str, int]]:
+        """Return (display_name, question_id) pairs for all questions in a form."""
+        query = (
+            "SELECT q.id, q.label, m.id AS modal_id"
+            " FROM questions q JOIN modals m ON q.modal_id = m.id"
+            " WHERE m.form_id = $1"
+            " ORDER BY m.id, q.id;"
+        )
+        rows = await self.pool.fetch(query, form_id)
+
+        result: list[tuple[str, int]] = []
+        page_num = 0
+        current_modal_id = None
+        question_num = 0
+        for row in rows:
+            if row["modal_id"] != current_modal_id:
+                current_modal_id = row["modal_id"]
+                page_num += 1
+                question_num = 0
+            question_num += 1
+            display = f"{page_num}.{question_num} {row['label']}"
+            result.append((display, row["id"]))
+        return result
 
     async def question_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
-        modal_id = self.selected_modals.get(interaction.user.id)
-        if modal_id is None:
+        form_id = self.selected_forms.get(interaction.user.id)
+        if form_id is None:
             return []
-        query = "SELECT label FROM questions WHERE modal_id = $1 AND label ILIKE $2;"
 
+        entries = await self._fetch_numbered_questions(form_id)
+        current_lower = current.lower()
+        return [
+            app_commands.Choice(name=display[:100], value=str(qid))
+            for display, qid in entries
+            if current_lower in display.lower()
+        ][:25]
+
+    async def page_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        form_id = self.selected_forms.get(interaction.user.id)
+        if form_id is None:
+            return []
+        query = "SELECT label FROM modals WHERE form_id = $1 AND label ILIKE $2;"
         return [
             app_commands.Choice(name=record["label"], value=record["label"])
-            for record in await self.pool.fetch(query, modal_id, current + "%")
+            for record in await self.pool.fetch(query, form_id, current + "%")
         ]
 
     @app_commands.command()
     @app_commands.describe(
         label="The label (title) of the question.",
-        placeholder="A placeholder text (fill-out hint) for this question.",
-        paragraph=(
-            "Whether the answer field to this question should have multiple lines."
-        ),
-        required="Whether this question should be required to fill out.",
-        min_length="The minimum length of the answer.",
-        max_length="The maximum length of the answer.",
+        page="The page to add to. Auto-assigned if not specified.",
     )
+    @app_commands.autocomplete(page=page_autocomplete)
     async def add(
         self,
         interaction: discord.Interaction,
         label: app_commands.Range[str, 1, 45],
-        placeholder: app_commands.Range[str, 1, 100] | None = None,
-        paragraph: bool = False,
-        required: bool = True,
-        min_length: app_commands.Range[int, 0, 1024] | None = None,
-        max_length: app_commands.Range[int, 1, 1024] | None = None,
+        page: app_commands.Range[str, 1, 80] | None = None,
     ) -> None:
-        """Add a new question to the currently selected modal (up to five per modal)."""
-        modal_id = self.selected_modals.get(interaction.user.id)
-        if modal_id is None:
-            await respond_error(interaction, "No modal selected.")
+        """Add a question to the selected form and open the editor."""
+        form_id = self.selected_forms.get(interaction.user.id)
+        if form_id is None:
+            await respond_error(interaction, "No form selected.")
             return
 
-        query = (
-            "INSERT INTO questions (modal_id, label, placeholder"
-            " , paragraph, required, min_length, max_length)"
-            " SELECT $1, $2, $3, $4, $5, $6, $7"
-            " WHERE (SELECT COUNT(*) FROM questions WHERE modal_id = $1) < 5"
+        if page is not None:
+            query_page = "SELECT id FROM modals WHERE form_id = $1 AND label = $2;"
+            modal_id: int | None = await self.pool.fetchval(query_page, form_id, page)
+            if modal_id is None:
+                await respond_error(
+                    interaction,
+                    f"Page `{page}` not found in the selected form.",
+                )
+                return
+        else:
+            query_free = (
+                "SELECT m.id FROM modals m"
+                " WHERE m.form_id = $1 AND (SELECT COUNT(*)"
+                " FROM questions q WHERE q.modal_id = m.id) < 5"
+                " ORDER BY m.id LIMIT 1;"
+            )
+            modal_id = await self.pool.fetchval(query_free, form_id)
+            if modal_id is None:
+                query_count = "SELECT COUNT(*) FROM modals WHERE form_id = $1;"
+                count: int = await self.pool.fetchval(query_count, form_id)
+                query_create = (
+                    "INSERT INTO modals (form_id, label) VALUES ($1, $2) RETURNING id;"
+                )
+                modal_id = await self.pool.fetchval(
+                    query_create, form_id, f"Page {count + 1}"
+                )
+
+        query_insert = (
+            "INSERT INTO questions (modal_id, label)"
+            " SELECT $1, $2"
+            " WHERE (SELECT COUNT(*) FROM questions"
+            " WHERE modal_id = $1) < 5"
             " ON CONFLICT (modal_id, label) DO NOTHING"
             " RETURNING id;"
         )
-
-        if (
-            await self.pool.fetchval(
-                query,
-                modal_id,
-                label,
-                placeholder,
-                paragraph,
-                required,
-                min_length,
-                max_length,
-            )
-            is None
-        ):
+        question_id = await self.pool.fetchval(query_insert, modal_id, label)
+        if question_id is None:
             await respond_error(
                 interaction,
-                "The selected modal already has five questions or a question with"
-                f" label `{label}` already exists in the currently selected modal.",
+                f"A question with label `{label}` already exists on"
+                " this page or the page is full.",
             )
-        else:
-            await respond_success(interaction, f"Question `{label}` added.")
+            return
+
+        query_get = "SELECT * FROM questions WHERE id = $1;"
+        row = await self.pool.fetchrow(query_get, question_id)
+        if row is None:
+            await respond_error(interaction, "Failed to create question.")
+            return
+        log.info("%s added question %r", interaction.user, label)
+        await interaction.response.send_modal(
+            QuestionEditModal(self.pool, Question(**dict(row)))
+        )
 
     @app_commands.command()
     @app_commands.autocomplete(question=question_autocomplete)
-    @app_commands.describe(question="The label of the question you want to edit.")
-    async def edit(
-        self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
-    ) -> None:
-        """Edit a question of the currently selected modal."""
-        modal_id = self.selected_modals.get(interaction.user.id)
-        if modal_id is None:
-            await respond_error(interaction, "No modal selected.")
+    @app_commands.describe(question="The question to edit.")
+    async def edit(self, interaction: discord.Interaction, question: str) -> None:
+        """Edit a question of the selected form."""
+        form_id = self.selected_forms.get(interaction.user.id)
+        if form_id is None:
+            await respond_error(interaction, "No form selected.")
             return
 
-        query = "SELECT * FROM questions WHERE modal_id = $1 AND label = $2;"
+        query = (
+            "SELECT q.* FROM questions q JOIN modals m"
+            " ON q.modal_id = m.id"
+            " WHERE m.form_id = $1 AND q.id = $2;"
+        )
+        try:
+            row = await self.pool.fetchrow(query, form_id, int(question))
+        except ValueError:
+            row = None
 
-        row = await self.pool.fetchrow(query, modal_id, question)
         if row is None:
-            await respond_error(
-                interaction,
-                f"Question `{question}` not found in the currently selected modal.",
-            )
+            await respond_error(interaction, "Question not found.")
         else:
             await interaction.response.send_modal(
                 QuestionEditModal(self.pool, Question(**dict(row)))
@@ -230,22 +291,27 @@ class FormQuestionCommands(app_commands.Group):
 
     @app_commands.command()
     @app_commands.autocomplete(question=question_autocomplete)
-    @app_commands.describe(question="The label of the question you want to remove.")
-    async def remove(
-        self, interaction: discord.Interaction, question: app_commands.Range[str, 1, 45]
-    ) -> None:
-        """Remove a question of the selected form. WARNING: This action is permanent."""
-        modal_id = self.selected_modals.get(interaction.user.id)
-        if modal_id is None:
-            await respond_error(interaction, "No modal selected.")
+    @app_commands.describe(question="The question to remove.")
+    async def remove(self, interaction: discord.Interaction, question: str) -> None:
+        """Remove a question from the selected form. This is permanent."""
+        form_id = self.selected_forms.get(interaction.user.id)
+        if form_id is None:
+            await respond_error(interaction, "No form selected.")
             return
 
-        query = "DELETE FROM questions WHERE modal_id = $1 AND label = $2 RETURNING id;"
+        query = (
+            "DELETE FROM questions"
+            " WHERE id = $1 AND modal_id IN"
+            " (SELECT id FROM modals WHERE form_id = $2)"
+            " RETURNING id;"
+        )
+        try:
+            result = await self.pool.fetchval(query, int(question), form_id)
+        except ValueError:
+            result = None
 
-        if await self.pool.fetchval(query, modal_id, question) is None:
-            await respond_error(
-                interaction,
-                f"Question `{question}` not found in the currently selected modal.",
-            )
+        if result is None:
+            await respond_error(interaction, "Question not found.")
         else:
-            await respond_success(interaction, f"Question `{question}` removed.")
+            log.info("%s removed question %d", interaction.user, result)
+            await respond_success(interaction, "Question removed.")
