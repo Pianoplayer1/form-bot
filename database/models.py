@@ -30,3 +30,4 @@ class Question:
     required: bool
     min_length: int | None
     max_length: int | None
+    minecraft_username: bool

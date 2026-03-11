@@ -17,21 +17,15 @@ class QuestionEditModal(ui.Modal):
         self.modal_id = question.modal_id
 
         self.label_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
-            label="Label",
-            placeholder="The label (title) of the question.",
             default=question.label,
             max_length=45,
         )
         self.description_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
-            label="Description",
-            placeholder="An optional description shown below the label.",
             default=question.description,
             required=False,
             max_length=100,
         )
         self.placeholder_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
-            label="Placeholder",
-            placeholder="A placeholder text like this for this question.",
             default=question.placeholder,
             required=False,
             max_length=100,
@@ -48,11 +42,15 @@ class QuestionEditModal(ui.Modal):
                     value="required",
                     default=question.required,
                 ),
+                CheckboxGroupOption(
+                    label="Minecraft username",
+                    value="minecraft_username",
+                    default=question.minecraft_username,
+                ),
             ],
         )
         self.length_input: ui.TextInput[QuestionEditModal] = ui.TextInput(
-            label="Answer length req., formatted as (min)-(max)",
-            placeholder="The maximum length can be up to 1024, defaults to 1000.",
+            placeholder="e.g. 10-500",
             default=(
                 f"{question.min_length or ''}-{question.max_length or ''}"
                 if question.min_length or question.max_length
@@ -62,11 +60,23 @@ class QuestionEditModal(ui.Modal):
             max_length=80,
         )
 
-        self.add_item(self.label_input)
-        self.add_item(self.description_input)
-        self.add_item(self.placeholder_input)
+        self.add_item(ui.Label(text="Label", component=self.label_input))
+        self.add_item(ui.Label(
+            text="Description",
+            description="Shown below the label in the form.",
+            component=self.description_input,
+        ))
+        self.add_item(ui.Label(
+            text="Placeholder",
+            description="Grey hint text shown in the empty answer field.",
+            component=self.placeholder_input,
+        ))
         self.add_item(self.checkboxes)
-        self.add_item(self.length_input)
+        self.add_item(ui.Label(
+            text="Answer length",
+            description="Formatted as min-max, up to 1024. Defaults to 1000.",
+            component=self.length_input,
+        ))
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM questions WHERE modal_id = $1 AND label = $2;"
@@ -74,6 +84,7 @@ class QuestionEditModal(ui.Modal):
             "UPDATE questions"
             " SET label = $3, description = $4, placeholder = $5, paragraph = $6"
             " , required = $7, min_length = $8, max_length = $9"
+            " , minecraft_username = $10"
             " WHERE modal_id = $1 AND label = $2;"
         )
 
@@ -110,6 +121,8 @@ class QuestionEditModal(ui.Modal):
                 )
                 return
 
+        minecraft_username = "minecraft_username" in selected
+
         await self.pool.execute(
             query_update,
             self.modal_id,
@@ -121,6 +134,7 @@ class QuestionEditModal(ui.Modal):
             required,
             min_length,
             max_length,
+            minecraft_username,
         )
         log.info("%s edited question %r", interaction.user, label)
         await respond_success(interaction, f"Question `{label}` updated.")

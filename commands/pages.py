@@ -15,25 +15,28 @@ class PageEditModal(ui.Modal):
         super().__init__(title=f"Editing {modal.label:.37}")
         self.pool = pool
         self.form_id = modal.form_id
-        self.items: list[ui.TextInput[PageEditModal]] = [
-            ui.TextInput(
-                label="Label",
-                placeholder="The label of the button for this page.",
-                default=modal.label,
-                max_length=80,
-            ),
-            ui.TextInput(
-                label="Title",
-                placeholder=(
-                    "The title of the page pop-up. Defaults to the form name."
-                ),
-                default=modal.title,
-                required=False,
-                max_length=45,
-            ),
-        ]
-        for item in self.items:
-            self.add_item(item)
+        self.original_label = modal.label
+
+        self.label_input: ui.TextInput[PageEditModal] = ui.TextInput(
+            default=modal.label,
+            max_length=80,
+        )
+        self.title_input: ui.TextInput[PageEditModal] = ui.TextInput(
+            default=modal.title,
+            required=False,
+            max_length=45,
+        )
+
+        self.add_item(ui.Label(
+            text="Label",
+            description="The label of the button for this page.",
+            component=self.label_input,
+        ))
+        self.add_item(ui.Label(
+            text="Title",
+            description="Defaults to the form name.",
+            component=self.title_input,
+        ))
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM modals WHERE form_id = $1 AND label = $2;"
@@ -42,12 +45,13 @@ class PageEditModal(ui.Modal):
             " WHERE form_id = $1 AND label = $2;"
         )
 
-        if self.items[0].value != self.items[0].default and await self.pool.fetchval(
-            query_exists, self.form_id, self.items[0].value
+        label = self.label_input.value
+        if label != self.original_label and await self.pool.fetchval(
+            query_exists, self.form_id, label
         ):
             await respond_error(
                 interaction,
-                f"A page with label `{self.items[0].value}`"
+                f"A page with label `{label}`"
                 " already exists in the selected form.",
             )
             return
@@ -55,12 +59,12 @@ class PageEditModal(ui.Modal):
         await self.pool.execute(
             query_update,
             self.form_id,
-            self.items[0].default,
-            self.items[0].value,
-            self.items[1].value or None,
+            self.original_label,
+            label,
+            self.title_input.value or None,
         )
-        log.info("%s edited page %r", interaction.user, self.items[0].value)
-        await respond_success(interaction, f"Page `{self.items[0].value}` updated.")
+        log.info("%s edited page %r", interaction.user, label)
+        await respond_success(interaction, f"Page `{label}` updated.")
 
 
 @app_commands.default_permissions(administrator=True)
@@ -90,35 +94,41 @@ class FormPageCommands(app_commands.Group):
         ]
 
     @app_commands.command()
-    @app_commands.describe(
-        label="The label of the button for this page.",
-        title="The title of the page pop-up. Defaults to the form name.",
-    )
+    @app_commands.describe(label="The label of the button for this page.")
     async def add(
         self,
         interaction: discord.Interaction,
         label: app_commands.Range[str, 1, 80],
-        title: app_commands.Range[str, 1, 45] | None = None,
     ) -> None:
-        """Add a new page to the selected form."""
+        """Add a new page to the selected form and open the editor."""
         form_id = self.selected_forms.get(interaction.user.id)
         if form_id is None:
             await respond_error(interaction, "No form selected.")
             return
 
         query = (
-            "INSERT INTO modals (form_id, label, title) VALUES ($1, $2, $3)"
-            " ON CONFLICT (form_id, label) DO NOTHING RETURNING label;"
+            "INSERT INTO modals (form_id, label) VALUES ($1, $2)"
+            " ON CONFLICT (form_id, label) DO NOTHING RETURNING id;"
         )
 
-        if await self.pool.fetchval(query, form_id, label, title) is None:
+        modal_id = await self.pool.fetchval(query, form_id, label)
+        if modal_id is None:
             await respond_error(
                 interaction,
-                f"A page with label `{label}` already exists in the selected form.",
+                f"A page with label `{label}`"
+                " already exists in the selected form.",
             )
-        else:
-            log.info("%s added page %r", interaction.user, label)
-            await respond_success(interaction, f"Page `{label}` added.")
+            return
+
+        log.info("%s added page %r", interaction.user, label)
+        query_get = "SELECT * FROM modals WHERE id = $1;"
+        row = await self.pool.fetchrow(query_get, modal_id)
+        if row is None:
+            await respond_error(interaction, "Failed to create page.")
+            return
+        await interaction.response.send_modal(
+            PageEditModal(self.pool, Modal(**dict(row)))
+        )
 
     @app_commands.command()
     @app_commands.autocomplete(page=page_autocomplete)

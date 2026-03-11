@@ -23,8 +23,9 @@ CREATE TABLE questions (
     placeholder TEXT,
     paragraph   BOOLEAN NOT NULL DEFAULT FALSE,
     required    BOOLEAN NOT NULL DEFAULT TRUE,
-    min_length  INTEGER,
-    max_length  INTEGER,
+    min_length           INTEGER,
+    max_length           INTEGER,
+    minecraft_username   BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (modal_id, label)
 );
 

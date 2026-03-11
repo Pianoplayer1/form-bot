@@ -80,12 +80,14 @@ class SendButton(ui.Button[ApplicationView]):
         all_questions = [q for modal in self.parent_view.questions for q in modal]
         all_answers = [a for modal in self.parent_view.answers for a in modal]
 
-        # Extract Minecraft username if it's the first question
+        # Find the Minecraft username question if one is flagged
         username = None
-        start = 0
-        if all_questions[0].label.lower() == "minecraft username":
-            username = all_answers[0]
-            start = 1
+        mc_index = next(
+            (i for i, q in enumerate(all_questions) if q.minecraft_username),
+            None,
+        )
+        if mc_index is not None:
+            username = all_answers[mc_index]
 
         # Build the response embed
         embed = discord.Embed(color=0x859900, title=form.name, timestamp=timestamp)
@@ -96,9 +98,11 @@ class SendButton(ui.Button[ApplicationView]):
         else:
             embed.add_field(name="Username:", value=interaction.user.display_name)
 
-        for question, answer in zip(
-            all_questions[start:], all_answers[start:], strict=True
+        for i, (question, answer) in enumerate(
+            zip(all_questions, all_answers, strict=True)
         ):
+            if i == mc_index:
+                continue
             embed.add_field(
                 name=question.label + ("" if question.label.endswith("?") else ":"),
                 value=answer or "---",
@@ -112,7 +116,10 @@ class SendButton(ui.Button[ApplicationView]):
             )
             answers_for_db = [
                 (response_id, q.id, a)
-                for q, a in zip(all_questions[start:], all_answers[start:], strict=True)
+                for i, (q, a) in enumerate(
+                    zip(all_questions, all_answers, strict=True)
+                )
+                if i != mc_index
             ]
             await conn.executemany(query_answers, answers_for_db)
 

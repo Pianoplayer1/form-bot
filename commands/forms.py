@@ -2,7 +2,7 @@ import logging
 
 import asyncpg
 import discord
-from discord import app_commands, ui
+from discord import CheckboxGroupOption, app_commands, ui
 
 from database.models import Form
 from utils.responses import respond_error, respond_success
@@ -15,71 +15,94 @@ class FormEditModal(ui.Modal):
     def __init__(self, pool: asyncpg.Pool, form: Form) -> None:
         super().__init__(title=f"Editing {form.name:.37}")
         self.pool = pool
-        self.items: list[ui.TextInput[FormEditModal]] = [
-            ui.TextInput(label="Name", default=form.name, max_length=45),
-            ui.TextInput(
-                label="Message",
-                style=discord.TextStyle.long,
-                placeholder="The message displayed to users filling out this form.",
-                default=form.message,
-                required=False,
-                max_length=2000,
-            ),
-            ui.TextInput(
-                label="Confirmation",
-                style=discord.TextStyle.long,
-                placeholder=(
-                    "The message shown after submitting."
-                    " Defaults to 'Response Recorded!'"
+        self.original_name = form.name
+
+        self.name_input: ui.TextInput[FormEditModal] = ui.TextInput(
+            default=form.name,
+            max_length=45,
+        )
+        self.message_input: ui.TextInput[FormEditModal] = ui.TextInput(
+            style=discord.TextStyle.long,
+            default=form.message,
+            required=False,
+            max_length=2000,
+        )
+        self.confirmation_input: ui.TextInput[FormEditModal] = ui.TextInput(
+            style=discord.TextStyle.long,
+            default=form.confirmation,
+            required=False,
+            max_length=2000,
+        )
+        self.channel_input: ui.TextInput[FormEditModal] = ui.TextInput(
+            default=str(form.channel) if form.channel is not None else None,
+            required=False,
+            max_length=18,
+        )
+        self.checkboxes: ui.CheckboxGroup[FormEditModal] = ui.CheckboxGroup(
+            options=[
+                CheckboxGroupOption(
+                    label="Ping @everyone on new response",
+                    value="ping",
+                    default=form.ping,
                 ),
-                default=form.confirmation,
-                required=False,
-                max_length=2000,
-            ),
-            ui.TextInput(
-                label="Channel",
-                placeholder="The ID of the text channel where responses are sent.",
-                default=str(form.channel) if form.channel is not None else None,
-                required=False,
-                max_length=18,
-            ),
-        ]
-        for item in self.items:
-            self.add_item(item)
+            ],
+        )
+
+        self.add_item(ui.Label(text="Name", component=self.name_input))
+        self.add_item(ui.Label(
+            text="Message",
+            description="Displayed to users filling out this form.",
+            component=self.message_input,
+        ))
+        self.add_item(ui.Label(
+            text="Confirmation",
+            description="Shown after submitting. Defaults to 'Response Recorded!'",
+            component=self.confirmation_input,
+        ))
+        self.add_item(ui.Label(
+            text="Channel",
+            description="The ID of the text channel where responses are sent.",
+            component=self.channel_input,
+        ))
+        self.add_item(self.checkboxes)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM forms WHERE name = $1;"
         query_update = (
-            "UPDATE forms SET name = $1, message = $2, confirmation = $3, channel = $4"
-            " WHERE name = $5;"
+            "UPDATE forms SET name = $1, message = $2, confirmation = $3"
+            " , channel = $4, ping = $5 WHERE name = $6;"
         )
 
-        if self.items[0].value != self.items[0].default and await self.pool.fetchval(
-            query_exists, self.items[0].value
+        name = self.name_input.value
+        if name != self.original_name and await self.pool.fetchval(
+            query_exists, name
         ):
             await respond_error(
-                interaction, f"A form with name `{self.items[0].value}` already exists."
+                interaction, f"A form with name `{name}` already exists."
             )
             return
 
         channel = None
-        if self.items[3].value:
+        if self.channel_input.value:
             try:
-                channel = abs(int(self.items[3].value))
+                channel = abs(int(self.channel_input.value))
             except ValueError:
                 await respond_error(interaction, "Not a valid channel ID.")
                 return
 
+        ping = "ping" in self.checkboxes.values
+
         await self.pool.execute(
             query_update,
-            self.items[0].value,
-            self.items[1].value or None,
-            self.items[2].value or None,
+            name,
+            self.message_input.value or None,
+            self.confirmation_input.value or None,
             channel,
-            self.items[0].default,
+            ping,
+            self.original_name,
         )
-        log.info("%s edited form %r", interaction.user, self.items[0].value)
-        await respond_success(interaction, f"Form `{self.items[0].value}` updated.")
+        log.info("%s edited form %r", interaction.user, name)
+        await respond_success(interaction, f"Form `{name}` updated.")
 
 
 @app_commands.default_permissions(administrator=True)
@@ -106,48 +129,37 @@ class FormCommands(app_commands.Group):
         ]
 
     @app_commands.command()
-    @app_commands.describe(
-        name="The name of the form.",
-        message="The message displayed to users filling out this form.",
-        confirmation=(
-            "The message shown after submitting. Defaults to 'Response Recorded!'"
-        ),
-        channel="The text channel where responses are sent.",
-        ping="Whether @everyone is pinged when a response is sent.",
-    )
+    @app_commands.describe(name="The name of the form.")
     async def create(
         self,
         interaction: discord.Interaction,
         name: app_commands.Range[str, 1, 45],
-        message: str | None = None,
-        confirmation: str | None = None,
-        channel: discord.TextChannel | discord.Thread | None = None,
-        ping: bool = False,
     ) -> None:
-        """Create a new form."""
+        """Create a new form and open the editor."""
         query = (
-            "INSERT INTO forms (name, message, confirmation, channel, ping)"
-            " VALUES ($1, $2, $3, $4, $5)"
+            "INSERT INTO forms (name) VALUES ($1)"
             " ON CONFLICT (name) DO NOTHING"
             " RETURNING id;"
         )
 
-        form_id = await self.pool.fetchval(
-            query,
-            name,
-            message,
-            confirmation,
-            None if channel is None else channel.id,
-            ping,
-        )
+        form_id = await self.pool.fetchval(query, name)
         if form_id is None:
             await respond_error(
                 interaction, f"A form with name `{name}` already exists."
             )
-        else:
-            self.selected_forms[interaction.user.id] = form_id
-            log.info("%s created form %r", interaction.user, name)
-            await respond_success(interaction, f"Form `{name}` created and selected.")
+            return
+
+        self.selected_forms[interaction.user.id] = form_id
+        log.info("%s created form %r", interaction.user, name)
+
+        query_get = "SELECT * FROM forms WHERE id = $1;"
+        row = await self.pool.fetchrow(query_get, form_id)
+        if row is None:
+            await respond_error(interaction, "Failed to create form.")
+            return
+        await interaction.response.send_modal(
+            FormEditModal(self.pool, Form(**dict(row)))
+        )
 
     @app_commands.command()
     @app_commands.autocomplete(form=form_autocomplete)

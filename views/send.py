@@ -190,17 +190,17 @@ class EditModal(ui.Modal):
     def __init__(self, view: SendView) -> None:
         super().__init__(title=f"Editing Button {view.current_button + 1}")
         self.view = view
-        self.label_input: ui.TextInput[SendView] = ui.TextInput(
-            label="Label", max_length=80
-        )
+        self.label_input: ui.TextInput[SendView] = ui.TextInput(max_length=80)
         self.emoji_input: ui.TextInput[SendView] = ui.TextInput(
-            label="Emoji",
-            placeholder="Must be an actual emoji icon, not just an emoji name!",
             required=False,
             max_length=32,
         )
-        self.add_item(self.label_input)
-        self.add_item(self.emoji_input)
+        self.add_item(ui.Label(text="Label", component=self.label_input))
+        self.add_item(ui.Label(
+            text="Emoji",
+            description="Must be an actual emoji icon, not just a name.",
+            component=self.emoji_input,
+        ))
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         label = self.label_input.value
