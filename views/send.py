@@ -196,11 +196,13 @@ class EditModal(ui.Modal):
             max_length=32,
         )
         self.add_item(ui.Label(text="Label", component=self.label_input))
-        self.add_item(ui.Label(
-            text="Emoji",
-            description="Must be an actual emoji icon, not just a name.",
-            component=self.emoji_input,
-        ))
+        self.add_item(
+            ui.Label(
+                text="Emoji",
+                description="Must be an actual emoji icon, not just a name.",
+                component=self.emoji_input,
+            )
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         label = self.label_input.value

@@ -2,7 +2,7 @@ import logging
 
 import asyncpg
 import discord
-from discord import CheckboxGroupOption, app_commands, ui
+from discord import app_commands, ui
 
 from database.models import Form
 from utils.responses import respond_error, respond_success
@@ -40,7 +40,7 @@ class FormEditModal(ui.Modal):
         )
         self.checkboxes: ui.CheckboxGroup[FormEditModal] = ui.CheckboxGroup(
             options=[
-                CheckboxGroupOption(
+                discord.CheckboxGroupOption(
                     label="Ping @everyone on new response",
                     value="ping",
                     default=form.ping,
@@ -49,21 +49,27 @@ class FormEditModal(ui.Modal):
         )
 
         self.add_item(ui.Label(text="Name", component=self.name_input))
-        self.add_item(ui.Label(
-            text="Message",
-            description="Displayed to users filling out this form.",
-            component=self.message_input,
-        ))
-        self.add_item(ui.Label(
-            text="Confirmation",
-            description="Shown after submitting. Defaults to 'Response Recorded!'",
-            component=self.confirmation_input,
-        ))
-        self.add_item(ui.Label(
-            text="Channel",
-            description="The ID of the text channel where responses are sent.",
-            component=self.channel_input,
-        ))
+        self.add_item(
+            ui.Label(
+                text="Message",
+                description="Displayed to users filling out this form.",
+                component=self.message_input,
+            )
+        )
+        self.add_item(
+            ui.Label(
+                text="Confirmation",
+                description="Shown after submitting. Defaults to 'Response Recorded!'",
+                component=self.confirmation_input,
+            )
+        )
+        self.add_item(
+            ui.Label(
+                text="Channel",
+                description="The ID of the text channel where responses are sent.",
+                component=self.channel_input,
+            )
+        )
         self.add_item(self.checkboxes)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -74,9 +80,7 @@ class FormEditModal(ui.Modal):
         )
 
         name = self.name_input.value
-        if name != self.original_name and await self.pool.fetchval(
-            query_exists, name
-        ):
+        if name != self.original_name and await self.pool.fetchval(query_exists, name):
             await respond_error(
                 interaction, f"A form with name `{name}` already exists."
             )
@@ -131,9 +135,7 @@ class FormCommands(app_commands.Group):
     @app_commands.command()
     @app_commands.describe(name="The name of the form.")
     async def create(
-        self,
-        interaction: discord.Interaction,
-        name: app_commands.Range[str, 1, 45],
+        self, interaction: discord.Interaction, name: app_commands.Range[str, 1, 45]
     ) -> None:
         """Create a new form and open the editor."""
         query = (
@@ -227,14 +229,12 @@ class FormCommands(app_commands.Group):
         query = "SELECT * FROM forms;"
 
         embed = discord.Embed(
-            title="New form message",
-            description=f"Will be sent in {channel.mention}",
+            title="New form message", description=f"Will be sent in {channel.mention}"
         )
         embed.add_field(
             name="Button 1/1", value="Current Label: [None]\nCurrent Emoji: [None]"
         )
         forms = [Form(**dict(r)) for r in await self.pool.fetch(query)]
         await interaction.response.send_message(
-            embed=embed,
-            view=SendView(self.pool, channel, content, embed, forms),
+            embed=embed, view=SendView(self.pool, channel, content, embed, forms)
         )

@@ -27,16 +27,20 @@ class PageEditModal(ui.Modal):
             max_length=45,
         )
 
-        self.add_item(ui.Label(
-            text="Label",
-            description="The label of the button for this page.",
-            component=self.label_input,
-        ))
-        self.add_item(ui.Label(
-            text="Title",
-            description="Defaults to the form name.",
-            component=self.title_input,
-        ))
+        self.add_item(
+            ui.Label(
+                text="Label",
+                description="The label of the button for this page.",
+                component=self.label_input,
+            )
+        )
+        self.add_item(
+            ui.Label(
+                text="Title",
+                description="Defaults to the form name.",
+                component=self.title_input,
+            )
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM modals WHERE form_id = $1 AND label = $2;"
@@ -51,8 +55,7 @@ class PageEditModal(ui.Modal):
         ):
             await respond_error(
                 interaction,
-                f"A page with label `{label}`"
-                " already exists in the selected form.",
+                f"A page with label `{label}` already exists in the selected form.",
             )
             return
 
@@ -71,10 +74,7 @@ class PageEditModal(ui.Modal):
 @app_commands.guild_only()
 class FormPageCommands(app_commands.Group):
     def __init__(
-        self,
-        pool: asyncpg.Pool,
-        selected_forms: dict[int, int],
-        name: str,
+        self, pool: asyncpg.Pool, selected_forms: dict[int, int], name: str
     ) -> None:
         super().__init__(name=name)
         self.pool = pool
@@ -96,9 +96,7 @@ class FormPageCommands(app_commands.Group):
     @app_commands.command()
     @app_commands.describe(label="The label of the button for this page.")
     async def add(
-        self,
-        interaction: discord.Interaction,
-        label: app_commands.Range[str, 1, 80],
+        self, interaction: discord.Interaction, label: app_commands.Range[str, 1, 80]
     ) -> None:
         """Add a new page to the selected form and open the editor."""
         form_id = self.selected_forms.get(interaction.user.id)
@@ -115,8 +113,7 @@ class FormPageCommands(app_commands.Group):
         if modal_id is None:
             await respond_error(
                 interaction,
-                f"A page with label `{label}`"
-                " already exists in the selected form.",
+                f"A page with label `{label}` already exists in the selected form.",
             )
             return
 
@@ -147,8 +144,7 @@ class FormPageCommands(app_commands.Group):
         row = await self.pool.fetchrow(query, form_id, page)
         if row is None:
             await respond_error(
-                interaction,
-                f"Page `{page}` not found in the selected form.",
+                interaction, f"Page `{page}` not found in the selected form."
             )
         else:
             await interaction.response.send_modal(
@@ -171,8 +167,7 @@ class FormPageCommands(app_commands.Group):
 
         if await self.pool.fetchval(query, form_id, page) is None:
             await respond_error(
-                interaction,
-                f"Page `{page}` not found in the selected form.",
+                interaction, f"Page `{page}` not found in the selected form."
             )
         else:
             log.info("%s removed page %r", interaction.user, page)

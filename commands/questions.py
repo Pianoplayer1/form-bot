@@ -2,7 +2,7 @@ import logging
 
 import asyncpg
 import discord
-from discord import CheckboxGroupOption, app_commands, ui
+from discord import app_commands, ui
 
 from database.models import Question
 from utils.responses import respond_error, respond_success
@@ -32,17 +32,17 @@ class QuestionEditModal(ui.Modal):
         )
         self.checkboxes: ui.CheckboxGroup[QuestionEditModal] = ui.CheckboxGroup(
             options=[
-                CheckboxGroupOption(
+                discord.CheckboxGroupOption(
                     label="Long answer field",
                     value="paragraph",
                     default=question.paragraph,
                 ),
-                CheckboxGroupOption(
+                discord.CheckboxGroupOption(
                     label="Required",
                     value="required",
                     default=question.required,
                 ),
-                CheckboxGroupOption(
+                discord.CheckboxGroupOption(
                     label="Minecraft username",
                     value="minecraft_username",
                     default=question.minecraft_username,
@@ -61,22 +61,28 @@ class QuestionEditModal(ui.Modal):
         )
 
         self.add_item(ui.Label(text="Label", component=self.label_input))
-        self.add_item(ui.Label(
-            text="Description",
-            description="Shown below the label in the form.",
-            component=self.description_input,
-        ))
-        self.add_item(ui.Label(
-            text="Placeholder",
-            description="Grey hint text shown in the empty answer field.",
-            component=self.placeholder_input,
-        ))
+        self.add_item(
+            ui.Label(
+                text="Description",
+                description="Shown below the label in the form.",
+                component=self.description_input,
+            )
+        )
+        self.add_item(
+            ui.Label(
+                text="Placeholder",
+                description="Grey hint text shown in the empty answer field.",
+                component=self.placeholder_input,
+            )
+        )
         self.add_item(self.checkboxes)
-        self.add_item(ui.Label(
-            text="Answer length",
-            description="Formatted as min-max, up to 1024. Defaults to 1000.",
-            component=self.length_input,
-        ))
+        self.add_item(
+            ui.Label(
+                text="Answer length",
+                description="Formatted as min-max, up to 1024. Defaults to 1000.",
+                component=self.length_input,
+            )
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM questions WHERE modal_id = $1 AND label = $2;"
@@ -116,12 +122,10 @@ class QuestionEditModal(ui.Modal):
             except ValueError:
                 await respond_error(
                     interaction,
-                    "Not a valid length: Has to be between 0 and 1024, formatted as"
-                    " `(min)-(max)`.",
+                    "Not a valid length: Has to be between 0 and 1024,"
+                    " formatted as `(min)-(max)`.",
                 )
                 return
-
-        minecraft_username = "minecraft_username" in selected
 
         await self.pool.execute(
             query_update,
@@ -134,7 +138,7 @@ class QuestionEditModal(ui.Modal):
             required,
             min_length,
             max_length,
-            minecraft_username,
+            "minecraft_username" in selected,
         )
         log.info("%s edited question %r", interaction.user, label)
         await respond_success(interaction, f"Question `{label}` updated.")
@@ -144,10 +148,7 @@ class QuestionEditModal(ui.Modal):
 @app_commands.guild_only()
 class FormQuestionCommands(app_commands.Group):
     def __init__(
-        self,
-        pool: asyncpg.Pool,
-        selected_forms: dict[int, int],
-        name: str,
+        self, pool: asyncpg.Pool, selected_forms: dict[int, int], name: str
     ) -> None:
         super().__init__(name=name)
         self.pool = pool
@@ -227,8 +228,7 @@ class FormQuestionCommands(app_commands.Group):
             modal_id: int | None = await self.pool.fetchval(query_page, form_id, page)
             if modal_id is None:
                 await respond_error(
-                    interaction,
-                    f"Page `{page}` not found in the selected form.",
+                    interaction, f"Page `{page}` not found in the selected form."
                 )
                 return
         else:

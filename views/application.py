@@ -14,10 +14,7 @@ log = logging.getLogger(__name__)
 
 class ApplicationView(ui.View):
     def __init__(
-        self,
-        pool: asyncpg.Pool,
-        form: Form,
-        data: list[tuple[Modal, list[Question]]],
+        self, pool: asyncpg.Pool, form: Form, data: list[tuple[Modal, list[Question]]]
     ) -> None:
         super().__init__(timeout=None)
         self.pool = pool
@@ -29,12 +26,7 @@ class ApplicationView(ui.View):
         for i, (modal, questions) in enumerate(data):
             self.answers.append([None] * len(questions))
             self.questions.append(questions)
-            button = FormButton(
-                self,
-                modal.title or form.name,
-                modal.label,
-                i,
-            )
+            button = FormButton(self, modal.title or form.name, modal.label, i)
             self.add_item(button)
             self.buttons.append(button)
         self.send_button = SendButton(self)
@@ -83,8 +75,7 @@ class SendButton(ui.Button[ApplicationView]):
         # Find the Minecraft username question if one is flagged
         username = None
         mc_index = next(
-            (i for i, q in enumerate(all_questions) if q.minecraft_username),
-            None,
+            (i for i, q in enumerate(all_questions) if q.minecraft_username), None
         )
         if mc_index is not None:
             username = all_answers[mc_index]
@@ -116,9 +107,7 @@ class SendButton(ui.Button[ApplicationView]):
             )
             answers_for_db = [
                 (response_id, q.id, a)
-                for i, (q, a) in enumerate(
-                    zip(all_questions, all_answers, strict=True)
-                )
+                for i, (q, a) in enumerate(zip(all_questions, all_answers, strict=True))
                 if i != mc_index
             ]
             await conn.executemany(query_answers, answers_for_db)
@@ -142,15 +131,16 @@ class SendButton(ui.Button[ApplicationView]):
                     form.channel,
                     form.name,
                 )
-                await respond_error(
-                    interaction,
-                    "An error occurred when processing your response.\n"
-                    " Please contact Pianoplayer1 (<@667445845792391208>).",
-                    edit=True,
-                )
+                msg = "An error occurred when processing your response - no permission."
+                if app := interaction.client.application:
+                    msg += f"\nPlease contact {app.owner.name} ({app.owner.mention})."
+                await respond_error(interaction, msg, edit=True)
         else:
             log.warning("No channel configured for form %r", form.name)
-            await respond_error(interaction, "No channel set", edit=True)
+            msg = "An error occurred when processing your response - no result channel."
+            if app := interaction.client.application:
+                msg += f"\nPlease contact {app.owner.name} ({app.owner.mention})."
+            await respond_error(interaction, msg, edit=True)
 
 
 class FormModal(ui.Modal):

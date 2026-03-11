@@ -25,6 +25,7 @@ class Client(discord.Client):
         query_ids = "SELECT DISTINCT message_id FROM form_views;"
         query_views = "SELECT * FROM form_views WHERE message_id = $1 ORDER BY id;"
 
+        # DB for persistent storage, dict below for local mapping of discord id to forms
         self.pool = await asyncpg.create_pool(os.getenv("FORMS_DB_URL"))
         selected_forms: dict[int, int] = {}
 
