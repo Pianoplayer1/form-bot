@@ -4,11 +4,9 @@ import os
 import asyncpg
 import discord
 
-from commands.admin import AdminCommands
 from commands.forms import FormCommands
 from commands.pages import FormPageCommands
 from commands.questions import FormQuestionCommands
-from utils.logger import DiscordLogHandler
 from views.starter import StarterView
 
 log = logging.getLogger(__name__)
@@ -38,32 +36,14 @@ class Client(discord.Client):
             view = StarterView(self.pool, record["message_id"], setup_data)
             self.add_view(view, message_id=record["message_id"])
 
-        # Setup admin commands in test guild
-        test_guild_id = os.getenv("FORMS_TEST_GUILD")
-        if test_guild_id is not None:
-            test_guild = discord.Object(int(test_guild_id))
-            self.tree.add_command(
-                AdminCommands(self.pool, name="admin"), guild=test_guild
-            )
-            await self.tree.sync(guild=test_guild)
-
-        # Setup other commands globally
-        self.tree.add_command(FormCommands(self.pool, selected_forms, name="forms"))
-        self.tree.add_command(FormPageCommands(self.pool, selected_forms, name="pages"))
-        self.tree.add_command(
-            FormQuestionCommands(self.pool, selected_forms, name="questions")
-        )
+        # Setup commands
+        self.tree.add_command(FormCommands(self.pool, selected_forms))
+        self.tree.add_command(FormPageCommands(self.pool, selected_forms))
+        self.tree.add_command(FormQuestionCommands(self.pool, selected_forms))
         await self.tree.sync()
 
     async def on_ready(self) -> None:
         await self.change_presence(status=discord.Status.offline)
-
-        # Attach Discord log handler
-        log_channel = self.get_channel(int(os.getenv("FORMS_LOG_CHANNEL", "0")))
-        if isinstance(log_channel, discord.TextChannel):
-            logging.getLogger().addHandler(DiscordLogHandler(self, log_channel))
-        else:
-            log.warning("Discord logging channel not found")
         log.info("Booted up")
 
 

@@ -12,7 +12,7 @@ class Form:
 
 
 @dataclass(slots=True)
-class Modal:
+class Page:
     id: int
     form_id: int
     label: str
@@ -22,7 +22,7 @@ class Modal:
 @dataclass(slots=True)
 class Question:
     id: int
-    modal_id: int
+    page_id: int
     label: str
     description: str | None
     placeholder: str | None

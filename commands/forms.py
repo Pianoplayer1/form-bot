@@ -70,13 +70,14 @@ class FormEditModal(ui.Modal):
                 component=self.channel_input,
             )
         )
-        self.add_item(self.checkboxes)
+        self.add_item(ui.Label(text="Options", component=self.checkboxes))
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         query_exists = "SELECT TRUE FROM forms WHERE name = $1;"
         query_update = (
-            "UPDATE forms SET name = $1, message = $2, confirmation = $3"
-            " , channel = $4, ping = $5 WHERE name = $6;"
+            "UPDATE forms"
+            " SET name = $1, message = $2, confirmation = $3, channel = $4, ping = $5"
+            " WHERE name = $6;"
         )
 
         name = self.name_input.value
@@ -94,15 +95,13 @@ class FormEditModal(ui.Modal):
                 await respond_error(interaction, "Not a valid channel ID.")
                 return
 
-        ping = "ping" in self.checkboxes.values
-
         await self.pool.execute(
             query_update,
             name,
             self.message_input.value or None,
             self.confirmation_input.value or None,
             channel,
-            ping,
+            "ping" in self.checkboxes.values,
             self.original_name,
         )
         log.info("%s edited form %r", interaction.user, name)
@@ -112,13 +111,8 @@ class FormEditModal(ui.Modal):
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()
 class FormCommands(app_commands.Group):
-    def __init__(
-        self,
-        pool: asyncpg.Pool,
-        selected_forms: dict[int, int],
-        name: str,
-    ) -> None:
-        super().__init__(name=name)
+    def __init__(self, pool: asyncpg.Pool, selected_forms: dict[int, int]) -> None:
+        super().__init__(name="forms")
         self.pool = pool
         self.selected_forms = selected_forms
 
@@ -138,30 +132,27 @@ class FormCommands(app_commands.Group):
         self, interaction: discord.Interaction, name: app_commands.Range[str, 1, 45]
     ) -> None:
         """Create a new form and open the editor."""
-        query = (
+        query_insert = (
             "INSERT INTO forms (name) VALUES ($1)"
             " ON CONFLICT (name) DO NOTHING"
             " RETURNING id;"
         )
+        query_get = "SELECT * FROM forms WHERE id = $1;"
 
-        form_id = await self.pool.fetchval(query, name)
+        form_id = await self.pool.fetchval(query_insert, name)
         if form_id is None:
             await respond_error(
                 interaction, f"A form with name `{name}` already exists."
             )
             return
 
-        self.selected_forms[interaction.user.id] = form_id
-        log.info("%s created form %r", interaction.user, name)
-
-        query_get = "SELECT * FROM forms WHERE id = $1;"
-        row = await self.pool.fetchrow(query_get, form_id)
-        if row is None:
+        if row := await self.pool.fetchrow(query_get, form_id):
+            db_form = Form(**dict(row))
+            self.selected_forms[interaction.user.id] = form_id
+            log.info("%s created form %r", interaction.user, name)
+            await interaction.response.send_modal(FormEditModal(self.pool, db_form))
+        else:
             await respond_error(interaction, "Failed to create form.")
-            return
-        await interaction.response.send_modal(
-            FormEditModal(self.pool, Form(**dict(row)))
-        )
 
     @app_commands.command()
     @app_commands.autocomplete(form=form_autocomplete)
@@ -172,13 +163,12 @@ class FormCommands(app_commands.Group):
         """Edit a form."""
         query = "SELECT * FROM forms WHERE name = $1;"
 
-        row = await self.pool.fetchrow(query, form)
-        if row is None:
-            await respond_error(interaction, f"Form `{form}` not found.")
+        if row := await self.pool.fetchrow(query, form):
+            db_form = Form(**dict(row))
+            self.selected_forms[interaction.user.id] = db_form.id
+            await interaction.response.send_modal(FormEditModal(self.pool, db_form))
         else:
-            f = Form(**dict(row))
-            self.selected_forms[interaction.user.id] = f.id
-            await interaction.response.send_modal(FormEditModal(self.pool, f))
+            await respond_error(interaction, f"Form `{form}` not found.")
 
     @app_commands.command()
     @app_commands.autocomplete(form=form_autocomplete)
@@ -189,12 +179,11 @@ class FormCommands(app_commands.Group):
         """Select a form to manage its pages and questions."""
         query = "SELECT id FROM forms WHERE name = $1;"
 
-        form_id = await self.pool.fetchval(query, form)
-        if form_id is None:
-            await respond_error(interaction, f"Form `{form}` not found.")
-        else:
+        if form_id := await self.pool.fetchval(query, form):
             self.selected_forms[interaction.user.id] = form_id
             await respond_success(interaction, f"Form `{form}` selected.")
+        else:
+            await respond_error(interaction, f"Form `{form}` not found.")
 
     @app_commands.command()
     @app_commands.autocomplete(form=form_autocomplete)
@@ -205,14 +194,16 @@ class FormCommands(app_commands.Group):
         """Remove a form. This is permanent."""
         query = "DELETE FROM forms WHERE name = $1 RETURNING id;"
 
-        deleted_id = await self.pool.fetchval(query, form)
-        if deleted_id is None:
-            await respond_error(interaction, f"Form `{form}` not found.")
-        else:
-            if self.selected_forms.get(interaction.user.id) == deleted_id:
-                del self.selected_forms[interaction.user.id]
+        if deleted_id := await self.pool.fetchval(query, form):
+            stale = [
+                uid for uid, fid in self.selected_forms.items() if fid == deleted_id
+            ]
+            for user_id in stale:
+                del self.selected_forms[user_id]
             log.info("%s removed form %r", interaction.user, form)
             await respond_success(interaction, f"Form `{form}` removed.")
+        else:
+            await respond_error(interaction, f"Form `{form}` not found.")
 
     @app_commands.command()
     @app_commands.describe(
@@ -228,13 +219,12 @@ class FormCommands(app_commands.Group):
         """Send a message with form buttons to a channel."""
         query = "SELECT * FROM forms;"
 
+        db_forms = [Form(**dict(r)) for r in await self.pool.fetch(query)]
         embed = discord.Embed(
             title="New form message", description=f"Will be sent in {channel.mention}"
         )
         embed.add_field(
             name="Button 1/1", value="Current Label: [None]\nCurrent Emoji: [None]"
         )
-        forms = [Form(**dict(r)) for r in await self.pool.fetch(query)]
-        await interaction.response.send_message(
-            embed=embed, view=SendView(self.pool, channel, content, embed, forms)
-        )
+        view = SendView(self.pool, channel, content, embed, db_forms)
+        await interaction.response.send_message(embed=embed, view=view)

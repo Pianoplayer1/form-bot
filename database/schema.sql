@@ -8,7 +8,7 @@ CREATE TABLE forms
     ping         BOOLEAN     NOT NULL DEFAULT FALSE
 );
 
-CREATE TABLE modals
+CREATE TABLE pages
 (
     id      SMALLSERIAL PRIMARY KEY,
     form_id SMALLINT    NOT NULL REFERENCES forms ON DELETE CASCADE,
@@ -20,7 +20,7 @@ CREATE TABLE modals
 CREATE TABLE questions
 (
     id                 SMALLSERIAL PRIMARY KEY,
-    modal_id           SMALLINT    NOT NULL REFERENCES modals ON DELETE CASCADE,
+    page_id            SMALLINT    NOT NULL REFERENCES pages ON DELETE CASCADE,
     label              VARCHAR(45) NOT NULL,
     description        VARCHAR(100),
     placeholder        VARCHAR(100),
@@ -29,7 +29,7 @@ CREATE TABLE questions
     min_length         SMALLINT,
     max_length         SMALLINT,
     minecraft_username BOOLEAN     NOT NULL DEFAULT FALSE,
-    UNIQUE (modal_id, label)
+    UNIQUE (page_id, label)
 );
 
 CREATE TABLE responses
@@ -64,5 +64,5 @@ CREATE INDEX idx_form_views_message_id ON form_views (message_id);
 -- Speed up ILIKE autocomplete queries.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX idx_forms_name_trgm ON forms USING gin (name gin_trgm_ops);
-CREATE INDEX idx_modals_label_trgm ON modals USING gin (label gin_trgm_ops);
+CREATE INDEX idx_pages_label_trgm ON pages USING gin (label gin_trgm_ops);
 CREATE INDEX idx_questions_label_trgm ON questions USING gin (label gin_trgm_ops);

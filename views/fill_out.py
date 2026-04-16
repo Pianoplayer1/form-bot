@@ -6,15 +6,15 @@ import asyncpg
 import discord
 from discord import ui
 
-from database.models import Form, Modal, Question
+from database.models import Form, Page, Question
 from utils.responses import respond_error, respond_success
 
 log = logging.getLogger(__name__)
 
 
-class ApplicationView(ui.View):
+class FillOutView(ui.View):
     def __init__(
-        self, pool: asyncpg.Pool, form: Form, data: list[tuple[Modal, list[Question]]]
+        self, pool: asyncpg.Pool, form: Form, data: list[tuple[Page, list[Question]]]
     ) -> None:
         super().__init__(timeout=None)
         self.pool = pool
@@ -23,19 +23,19 @@ class ApplicationView(ui.View):
         self.questions: list[list[Question]] = []
         self.buttons: list[FormButton] = []
 
-        for i, (modal, questions) in enumerate(data):
+        for i, (page, questions) in enumerate(data):
             self.answers.append([None] * len(questions))
             self.questions.append(questions)
-            button = FormButton(self, modal.title or form.name, modal.label, i)
+            button = FormButton(self, page.title or form.name, page.label, i)
             self.add_item(button)
             self.buttons.append(button)
         self.send_button = SendButton(self)
         self.add_item(self.send_button)
 
 
-class FormButton(ui.Button[ApplicationView]):
+class FormButton(ui.Button[FillOutView]):
     def __init__(
-        self, parent_view: ApplicationView, title: str, label: str, index: int
+        self, parent_view: FillOutView, title: str, label: str, index: int
     ) -> None:
         super().__init__(label=label, style=discord.ButtonStyle.primary)
         self.parent_view = parent_view
@@ -48,8 +48,8 @@ class FormButton(ui.Button[ApplicationView]):
         )
 
 
-class SendButton(ui.Button[ApplicationView]):
-    def __init__(self, parent_view: ApplicationView) -> None:
+class SendButton(ui.Button[FillOutView]):
+    def __init__(self, parent_view: FillOutView) -> None:
         super().__init__(label="Send", disabled=True, style=discord.ButtonStyle.success)
         self.parent_view = parent_view
 
@@ -68,9 +68,9 @@ class SendButton(ui.Button[ApplicationView]):
 
         timestamp = datetime.now(UTC)
 
-        # Flatten questions and answers across all modals
-        all_questions = [q for modal in self.parent_view.questions for q in modal]
-        all_answers = [a for modal in self.parent_view.answers for a in modal]
+        # Flatten questions and answers across all pages
+        all_questions = [q for page in self.parent_view.questions for q in page]
+        all_answers = [a for page in self.parent_view.answers for a in page]
 
         # Find the Minecraft username question if one is flagged
         username = None
@@ -144,7 +144,7 @@ class SendButton(ui.Button[ApplicationView]):
 
 
 class FormModal(ui.Modal):
-    def __init__(self, view: ApplicationView, title: str, index: int) -> None:
+    def __init__(self, view: FillOutView, title: str, index: int) -> None:
         super().__init__(title=title)
         self.view = view
         self.index = index
@@ -177,20 +177,6 @@ class FormModal(ui.Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         for i, text_input in enumerate(self.inputs):
             self.view.answers[self.index][i] = text_input.value or None
-        answers = dict(
-            zip(
-                (q.label for q in self.view.questions[self.index]),
-                self.view.answers[self.index],
-                strict=False,
-            )
-        )
-        log.debug(
-            "%s filled out page %r of form %r: %s",
-            interaction.user,
-            self.title,
-            self.view.form.name,
-            answers,
-        )
         self.view.buttons[self.index].style = discord.ButtonStyle.secondary
         if all(
             all(a is not None or not q.required for a, q in zip(*x, strict=False))

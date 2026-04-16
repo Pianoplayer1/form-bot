@@ -4,9 +4,9 @@ import asyncpg
 import discord
 from discord import ui
 
-from database.models import Form, Modal, Question
+from database.models import Form, Page, Question
 from utils.responses import respond_error
-from views.application import ApplicationView
+from views.fill_out import FillOutView
 
 log = logging.getLogger(__name__)
 
@@ -40,8 +40,8 @@ class ApplicationButton(ui.Button[StarterView]):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         query_form = "SELECT * FROM forms WHERE id = $1;"
-        query_modals = "SELECT * FROM modals WHERE form_id = $1 ORDER BY id;"
-        query_questions = "SELECT * FROM questions WHERE modal_id = $1 ORDER BY id;"
+        query_pages = "SELECT * FROM pages WHERE form_id = $1 ORDER BY id;"
+        query_questions = "SELECT * FROM questions WHERE page_id = $1 ORDER BY id;"
 
         row = await self.pool.fetchrow(query_form, self.form_id)
         if row is None:
@@ -51,13 +51,13 @@ class ApplicationButton(ui.Button[StarterView]):
 
         form = Form(**dict(row))
         data = []
-        for modal_row in await self.pool.fetch(query_modals, self.form_id):
-            modal = Modal(**dict(modal_row))
-            question_rows = await self.pool.fetch(query_questions, modal.id)
-            data.append((modal, [Question(**dict(q)) for q in question_rows]))
+        for page_row in await self.pool.fetch(query_pages, self.form_id):
+            page = Page(**dict(page_row))
+            question_rows = await self.pool.fetch(query_questions, page.id)
+            data.append((page, [Question(**dict(q)) for q in question_rows]))
         log.info("%s started form %r", interaction.user, form.name)
         await interaction.response.send_message(
             f"## {form.name}\n\n{form.message}\n** **",
-            view=ApplicationView(self.pool, form, data),
+            view=FillOutView(self.pool, form, data),
             ephemeral=True,
         )
