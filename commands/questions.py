@@ -148,17 +148,17 @@ class FormQuestionCommands(app_commands.Group):
         self.pool = pool
         self.selected_forms = selected_forms
 
-    async def _fetch_numbered_questions(self, form_id: int) -> list[tuple[str, int]]:
+    async def _fetch_numbered_questions(self, form_id: int) -> list[tuple[str, str]]:
         """Return (display_name, question_id) pairs for all questions in a form."""
         query = (
-            "SELECT q.id, q.label, m.id AS page_id"
+            "SELECT q.label, m.id AS page_id"
             " FROM questions q JOIN pages m ON q.page_id = m.id"
             " WHERE m.form_id = $1"
             " ORDER BY m.id, q.id;"
         )
         rows = await self.pool.fetch(query, form_id)
 
-        result: list[tuple[str, int]] = []
+        result: list[tuple[str, str]] = []
         page_num = 0
         current_page_id = None
         question_num = 0
@@ -169,7 +169,7 @@ class FormQuestionCommands(app_commands.Group):
                 question_num = 0
             question_num += 1
             display = f"{page_num}.{question_num} {row['label']}"
-            result.append((display, row["id"]))
+            result.append((display, row["label"]))
         return result
 
     async def question_autocomplete(
@@ -182,8 +182,8 @@ class FormQuestionCommands(app_commands.Group):
         entries = await self._fetch_numbered_questions(form_id)
         current_lower = current.lower()
         return [
-            app_commands.Choice(name=display[:100], value=str(qid))
-            for display, qid in entries
+            app_commands.Choice(name=display[:100], value=str(label))
+            for display, label in entries
             if current_lower in display.lower()
         ][:25]
 

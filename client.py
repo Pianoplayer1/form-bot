@@ -24,7 +24,7 @@ class Client(discord.Client):
         query_views = "SELECT * FROM form_views WHERE message_id = $1 ORDER BY id;"
 
         # DB for persistent storage, dict below for local mapping of discord id to forms
-        self.pool = await asyncpg.create_pool(os.getenv("FORMS_DB_URL"))
+        self.pool = await asyncpg.create_pool(os.environ["FORMBOT_DB_URL"])
         selected_forms: dict[int, int] = {}
 
         # Add persistent views to client
@@ -48,4 +48,4 @@ class Client(discord.Client):
 
 
 if __name__ == "__main__":
-    Client().run(os.getenv("FORMS_TOKEN", "MISSING"), root_logger=True)
+    Client().run(os.environ["DISCORD_TOKEN"], root_logger=True)
