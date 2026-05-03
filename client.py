@@ -48,4 +48,5 @@ class Client(discord.Client):
 
 
 if __name__ == "__main__":
+    logging.getLogger("discord.gateway").setLevel(logging.WARNING)
     Client().run(os.environ["DISCORD_TOKEN"], root_logger=True)
